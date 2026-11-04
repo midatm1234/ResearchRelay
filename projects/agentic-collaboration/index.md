@@ -16,4 +16,5 @@ Initial agent-authored review; no systematic-review or human-signoff claim. Sele
 - [Format choice](format-choice.md) - Explicit reference assumption.
 - [Source notes](sources/index.md) - Bibliography, methods, limitations, implications.
 - [Task proposals](tasks/index.md) - Human scope approval required.
+- [Working-session pilot](pilot/index.md) - Live SSH handoff and verification limits.
 - [Update history](log.md) - Dated changes.

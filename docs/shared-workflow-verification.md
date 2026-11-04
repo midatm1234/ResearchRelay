@@ -1,6 +1,6 @@
 # Shared GitHub collaboration verification — November 4, 2026
 
-This report distinguishes local execution, mocked failures, remote Git transport, and model inference. The current implementation is on `SRTD_DT_test`. The full Windows suite and subsequent focused checks passed. Current-branch macOS CI and the live GitHub SSH pilot are pending at this report's initial publication; those paths are recorded separately below.
+This report distinguishes local execution, mocked failures, remote Git transport, and model inference. The current implementation is on `SRTD_DT_test`. The full Windows suite and subsequent focused checks passed. The live GitHub SSH pilot also completed. Native macOS CI exposed a Unicode-path diagnostic issue; its focused fix passed locally and matching-commit CI is being rerun.
 
 ## Verified local workflow
 
@@ -24,10 +24,10 @@ The underlying source notes, [search record](../projects/agentic-collaboration/s
 
 | Path | Verification status |
 | --- | --- |
-| Live GitHub SSH publication | Pending. No live pilot commit hashes are recorded here yet. The intended command below performs normal pushes and must honor repository permissions and branch protection. |
+| Live GitHub SSH publication | Completed: Alice `cf95142ca465251311e7256b788cabbf491fdd7a`, Bob `b6b378ff170d68a681cd92255b222102ef390520`. Both tasks completed; subsequent retrieval succeeded; stale edit returned HTTP 409. Two command agents used one SSH Git principal. See [pilot evidence](../projects/agentic-collaboration/pilot/verification-20261104.md). |
 | Separate GitHub users | Not demonstrated by the local pilot. Application participant identities share the coordinator's configured Git principal; attributing Alice and Bob does not establish two distinct GitHub account authentications. |
 | Claude/GPT paid inference | Not exercised. API and CLI connection paths have targeted checks, but a model menu, mocked HTTP response, or command fixture is not live model inference. Consumer chat subscriptions do not establish API access. |
-| Current implementation on macOS | Pending matching-commit CI. The current local checks ran on Windows and are not macOS runtime tests. |
+| Current implementation on macOS | Initial native arm64 CI ran 142 tests: 141 passed and one Unicode-collision diagnostic assertion failed. Git normalized the path before the blob comparison. Collision checks now run first; six related Windows checks pass. Matching fixed-commit native CI is pending; this is not yet a passing macOS claim. |
 | Previous macOS baseline | Native macOS 15 Apple Silicon and Intel baseline checks were reported passing before these collaboration changes. Matching run/commit evidence must remain separate from current-branch verification; see [Actions](https://github.com/midatm1234/ResearchRelay/actions/workflows/macos.yml). |
 | Native Miniforge installation / Safari | Not exercised by these local checks. A pip-based macOS CI run does not establish an interactive Miniforge installation or Safari automation. |
 
@@ -57,7 +57,13 @@ Inspect the emitted `github_transport_live`, `model_inference_live`, publication
 ## Final result fields
 
 - Windows full suite: 139 passed in 405.81 seconds; final worker suite: 11 passed, including three added credential regressions. Current inventory: 142 tests. Wheel/dependency/syntax checks and isolated HTTP startup/scientific smoke passed.
-- Implementation commit and push: pending final publication.
-- Live SSH pilot publications and stale-edit result: pending.
+- Implementation commit pushed: `7b89d78c92b34a9424a347d366fb2eb696435bf5`; subsequent pilot commits were retrieved by fast-forward.
+- Live SSH pilot: Alice `cf95142ca465251311e7256b788cabbf491fdd7a`; Bob `b6b378ff170d68a681cd92255b222102ef390520`; stale HTTP 409; no paid model inference.
 - Current-commit macOS arm64/x86_64 CI runs: pending.
 - Live model inference: not exercised.
+
+## Findings resolved during integration
+
+Native macOS Git can precompose Unicode path lookups. Publication now checks filename aliases before blob hashes so the conflict explains the actual collision. The first live pilot also exposed a relative link that broke when the same accepted body was projected into a workflow directory. An additive Reference preserves the original accepted record. Future pilot reports use pinned GitHub links (plain versioned paths locally); every pilot now validates links in the entire published bundle. Knowledge checks pass after the repair.
+
+The final credential-free repeat run, `fc1ab56b`, consumed the accumulated 37-document project record and published a 46-document bundle with zero unresolved links. Both tasks completed and the stale edit returned 409. Pilot session tokens are independently randomized for every run; credential guards remain enabled. This repeat used a local bare remote, separate from the earlier live SSH run.

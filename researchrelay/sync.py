@@ -499,6 +499,9 @@ class ProjectSync:
                         break
                     if not self._ancestor(cache,base_commit,latest):
                         raise SyncError("The supplied base commit is not an ancestor of this project branch.")
+                    # macOS Git may precompose a lookup path before cat-file resolves
+                    # it. Diagnose filesystem aliases before checking blob hashes.
+                    self._guard_paths(cache,latest,changes)
                     conflicts = []
                     for change in changes:
                         old = self._blob(cache,base_commit,change["path"])

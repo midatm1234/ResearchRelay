@@ -7,6 +7,7 @@ as live inference; the executable report adapter is deliberately scripted.
 from __future__ import annotations
 
 import json
+import secrets
 from pathlib import Path
 import shutil
 import subprocess
@@ -45,6 +46,11 @@ else:
     finding=next(document for document in documents if document['path']==sys.argv[1])
     assert 'AutoGen' in finding['body']
     assert context['input_artifacts'], 'The dependent task must consume the first accepted result.'
+    remote=context['project']['repository']['url']
+    repository=('https://github.com/'+remote.split(':',1)[1]) if remote.startswith('git@github.com:') else remote
+    commit=context['project']['sync']['latest_commit']
+    finding_ref=('['+'the preceding finding'+']('+repository.removesuffix('.git')+'/blob/'+commit+'/'+sys.argv[1]+')'
+                 if repository.startswith('https://github.com/') else '`'+sys.argv[1]+'` at commit `'+commit+'`')
     prov=source('/sources/w3c-2013-prov.md')
     prov_url=prov['metadata']['sources'][0]['resource']
     body=('# Independent review and extension\n\n'
@@ -53,7 +59,7 @@ else:
           'Extension: preserve explicit provenance between evidence, agent activity, and responsible participant. '
           'The [W3C PROV source]('+prov_url+') provides a vocabulary for this relationship, not a guarantee of correctness. '
           'ResearchRelay should retain input versions and keep methodological judgment human.\n\n'
-          'The finding reviewed is [the preceding finding](./'+sys.argv[1].rsplit('/',1)[-1]+'). '
+          'The finding reviewed is '+finding_ref+'. '
           'This scripted review is a connection test, not independent human scientific validation.')
     findings=['The preceding finding limits its claim to architecture.',
               'Add explicit derivation and participant provenance to every handoff.']
@@ -76,9 +82,9 @@ def _git(path,*args):
 
 
 class _Session:
-    def __init__(self,client,participant):
+    def __init__(self,client,participant,token):
         self.client = client
-        self.headers = {"Authorization":f"Bearer pilot-{participant}"}
+        self.headers = {"Authorization":f"Bearer {token}"}
     def get(self,path,**kwargs):
         return self.client.get(path,headers=self.headers,**kwargs)
     def post(self,path,**kwargs):
@@ -112,9 +118,10 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
         remote = str(bare)
     else:
         remote = str(remote)
+    credentials = {name:secrets.token_urlsafe(32) for name in ("human","alice","bob")}
     settings = Settings(db_path=root/"state.db",repo_path=root/"coordinator"/"records",project_id=PROJECT,
         mode="live" if live else "demo",github_url=remote,github_branch=branch,knowledge_path=PREFIX,
-        tokens={f"pilot-{name}":name for name in ("human","alice","bob")})
+        tokens={token:name for name,token in credentials.items()})
     engine = Engine(settings.db_path,PROJECT)
     producer = root/"participant-agent.py"
     producer.write_text(PRODUCER,encoding="utf-8")
@@ -123,7 +130,7 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
     first_task,second_task = f"lit-finding-{run_id}",f"lit-review-{run_id}"
     app = create_app(settings,engine)
     with TestClient(app,base_url="http://testserver/api/") as client:
-        sessions = {name:_Session(client,name) for name in ("human","alice","bob")}
+        sessions = {name:_Session(client,name,credentials[name]) for name in credentials}
         human,alice,bob = (sessions[name] for name in ("human","alice","bob"))
         initial_response = alice.get("project/context")
         initial_response.raise_for_status()
@@ -145,7 +152,7 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
                 "command":[sys.executable,str(producer),alice_path]})
             response.raise_for_status()
         def execute(name):
-            worker = Worker("http://testserver",name,root/f"{name}-clone",token=f"pilot-{name}")
+            worker = Worker("http://testserver",name,root/f"{name}-clone",token=credentials[name])
             worker.client.close()
             worker.client = sessions[name]
             outcome = worker.run_once()
@@ -192,6 +199,17 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
         final_context = final.json()
         assert any(document["path"]==bob_path for document in final_context["documents"])
         assert all(task["status"]=="completed" for task in engine.list_tasks())
+        # A result is copied into both pilot notes and generated workflow records.
+        # Validate links after publication so relative references cannot silently
+        # break when the same accepted evidence is projected at another path.
+        published_bundle = root/"published-bundle"
+        for document in final_context["documents"]:
+            target = published_bundle/document["path"].removeprefix(PREFIX+"/")
+            target.parent.mkdir(parents=True,exist_ok=True)
+            target.write_text(document["content"],encoding="utf-8")
+        published_validation = validate_bundle(published_bundle,PROJECT)
+        if published_validation["broken_links"]:
+            raise ValueError("Published pilot has unresolved knowledge links; inspect published-bundle before continuing")
     summary = dict(status="completed",run_id=run_id,workspace=str(root),branch=branch,
         github_transport_live=bool(live),model_inference_live=False,
         agent_connections=["alice: participant-local command","bob: participant-local command"],
@@ -200,6 +218,7 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
         task_ids=[first_task,second_task],stale_edit_status=stale.status_code,
         verified_source_count=sum(1 for document in validation["documents"] if document["path"].startswith("sources/") and not document["metadata"].get("reserved")),
         source_bundle_validation={key:validation[key] for key in ("count","broken_links","format_status","selected_spec")},
+        published_bundle_validation={key:published_validation[key] for key in ("count","broken_links","format_status")},
         note="Two application participant identities share the configured Git principal. Distinct GitHub accounts and paid model APIs were not exercised.")
     (root/"summary.json").write_text(json.dumps(summary,indent=2),encoding="utf-8")
     return summary

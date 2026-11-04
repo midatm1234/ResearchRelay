@@ -1,0 +1,11 @@
+Forecast experiment pilot, 3 November 2026
+
+Decision: Compare experiment A and experiment B against the same reference observations. Rationale: The team needs evidence before spending compute on a larger validation campaign.
+Decision: Routine scoring, paired comparisons, and documented revisions are authorized after the task scope is approved. Rationale: Scientists should focus on methodology and interpretation.
+
+TASK forecast-a | owner: alice | objective: Evaluate forecast experiment A against reference observations | outputs: RMSE, mean bias, sample size, reproducible score file | acceptance: Exclude missing values; report sample size, data/code hashes, assumptions and limitations
+TASK forecast-b | owner: bob | objective: Evaluate forecast experiment B against reference observations | outputs: RMSE, mean bias, sample size, reproducible score file | acceptance: Exclude missing values; report sample size, data/code hashes, assumptions and limitations
+TASK synthesis | owner: alice | objective: Compare forecast experiments using both accepted score artifacts | dependencies: forecast-a,forecast-b | outputs: Paired comparison, uncertainty interval, scientific decision request | acceptance: Compare identical dates; report sample size and bootstrap uncertainty; explain limitations and downstream consequences
+
+Question: Is this short synthetic window sufficient to justify selecting an experiment for a larger evaluation?
+Question: How should performance on the unusual high-error day affect the next experiment?

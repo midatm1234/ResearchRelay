@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coclaude.local/schemas/result/1.0",
+  "title": "CoClaude result artifact schema 1.0",
+  "type": "object",
+  "required": [
+    "id",
+    "project_id",
+    "schema_version",
+    "version",
+    "responsible_participant",
+    "producing_agent",
+    "created_at",
+    "updated_at",
+    "objective",
+    "input_refs",
+    "dependencies",
+    "expected_outputs",
+    "acceptance_criteria",
+    "validation_results",
+    "unresolved_questions",
+    "next_actions",
+    "related_files",
+    "repository_commits",
+    "pull_requests",
+    "artifact_type",
+    "task_id",
+    "data",
+    "code",
+    "configuration",
+    "environment",
+    "evidence",
+    "assumptions",
+    "limitations"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "project_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "responsible_participant": {
+      "type": "string",
+      "minLength": 1
+    },
+    "producing_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "input_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "validation_results": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "unresolved_questions": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "related_files": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "repository_commits": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "pull_requests": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "data": {
+      "type": [
+        "string",
+        "array",
+        "object"
+      ],
+      "minLength": 1,
+      "minItems": 1,
+      "minProperties": 1
+    },
+    "code": {
+      "type": [
+        "string",
+        "array",
+        "object"
+      ],
+      "minLength": 1,
+      "minItems": 1,
+      "minProperties": 1
+    },
+    "configuration": {
+      "type": [
+        "string",
+        "array",
+        "object"
+      ],
+      "minLength": 1,
+      "minItems": 1,
+      "minProperties": 1
+    },
+    "environment": {
+      "type": [
+        "string",
+        "array",
+        "object"
+      ],
+      "minLength": 1,
+      "minItems": 1,
+      "minProperties": 1
+    },
+    "evidence": {
+      "type": [
+        "string",
+        "array",
+        "object"
+      ],
+      "minLength": 1,
+      "minItems": 1,
+      "minProperties": 1
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "completion_notes": {
+      "type": "string"
+    },
+    "artifact_type": {
+      "const": "result"
+    }
+  },
+  "additionalProperties": true
+}

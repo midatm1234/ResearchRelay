@@ -1,0 +1,6 @@
+* text=auto eol=lf
+# Archived scientific evidence must retain the exact bytes named by its hashes.
+examples/pilot-record/data/** -text whitespace=cr-at-eol
+examples/pilot-record/analysis/** -text whitespace=cr-at-eol
+examples/illustrative-observations.csv -text whitespace=cr-at-eol
+*.png binary

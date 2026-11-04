@@ -2,8 +2,8 @@
 
 Artifacts are ordinary UTF-8 Markdown files with YAML front matter. Five bundled
 JSON Schemas describe schema version `1.0`: meeting, task, result, review, decision.
-Use `coclaude.artifacts.validate_artifact`, `render_markdown`, and `parse_markdown`
-to validate and exchange records. JSON Schemas ship in `coclaude/schemas`.
+Use `researchrelay.artifacts.validate_artifact`, `render_markdown`, and `parse_markdown`
+to validate and exchange records. JSON Schemas ship in `researchrelay/schemas`.
 
 `schema_version` versions the format. `version` versions the content of one stable
 `id`. An input reference always has `{id, version}` and may additionally include a
@@ -56,7 +56,7 @@ from the execution task ID (the service's task definition ID is `task-<task-id>`
 `examples/artifacts/` contains five small schema illustrations with four-row
 synthetic data. `examples/pilot-record/` contains actual records from an executed
 local pilot, including both synthesis result versions and their reviews. These
-are separate examples; running `coclaude demo` generates a fresh project record.
+are separate examples; running `researchrelay demo` generates a fresh project record.
 Direct Git imports add evidence artifacts; they never execute imported task
 definitions, apply imported review state, or resolve scientific decisions. Use
 the coordination API for those authoritative transitions.
@@ -71,5 +71,5 @@ historical completion record. A worker claim then persists and consumes exactly
 those reconciled versions. The service never selects the newest version silently.
 
 Regenerate schemas after changing `_generate.py` with:
-`python coclaude/schemas/_generate.py`. Intentional extension metadata is allowed
+`python researchrelay/schemas/_generate.py`. Intentional extension metadata is allowed
 so external analysis tools can preserve domain-specific details.

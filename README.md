@@ -1,14 +1,16 @@
-# Relay / CoClaude
+# ResearchRelay
 
-A working experiment for a small scientific team whose participant agents collaborate asynchronously. Scientists approve scope and make scientific decisions; workers perform routine work and exchange portable evidence. The dashboard is named **Relay**; the Python package and CLI are `coclaude`.
+A working experiment for a small scientific team whose participant agents collaborate asynchronously. Scientists approve scope and make scientific decisions; workers perform routine work and exchange portable evidence. The application is **ResearchRelay**; the Python package and CLI are `researchrelay`.
 
 ## Start here
 
-Run from this checkout (`D:\coClaude` on the development machine). Git and mamba must be installed.
+Run from this checkout (`D:\ResearchRelay` on the development machine). Git and mamba must be installed.
+
+The source is in [midatm1234/new](https://github.com/midatm1234/new). Clone it into the application directory with `git clone git@github.com:midatm1234/new.git ResearchRelay`.
 
 ```powershell
 mamba env create -f environment.yml
-mamba run -n coclaude-mvp coclaude serve --port 8000
+mamba run -n researchrelay researchrelay serve --port 8000
 ```
 
 The environment has already been created on the development machine. Open **http://127.0.0.1:8000**, then choose **Run local pilot**. The browser can close while the service and workers continue.
@@ -16,21 +18,21 @@ The environment has already been created on the development machine. Open **http
 To run the same demonstration from another terminal against the dashboard's default database:
 
 ```powershell
-mamba run -n coclaude-mvp coclaude demo
+mamba run -n researchrelay researchrelay demo
 ```
 
 Use the button or CLI once; both coordinate through the same SQLite database. To run an independent fresh experiment without deleting existing work:
 
 ```powershell
-mamba run -n coclaude-mvp coclaude demo --db .runtime/session-2.db --repo .runtime/session-2-record
+mamba run -n researchrelay researchrelay demo --db .runtime/session-2.db --repo .runtime/session-2-record
 ```
 
 To show that independent experiment in the dashboard, start a separate service:
 
 ```powershell
-$env:COCLAUDE_DB = '.runtime/session-2.db'
-$env:COCLAUDE_REPO = '.runtime/session-2-record'
-mamba run -n coclaude-mvp coclaude serve --port 8001
+$env:RESEARCHRELAY_DB = '.runtime/session-2.db'
+$env:RESEARCHRELAY_REPO = '.runtime/session-2-record'
+mamba run -n researchrelay researchrelay serve --port 8001
 ```
 
 API documentation: **http://127.0.0.1:8000/docs**. Configuration: copy `.env.example` to `.env` and edit. Runtime state and credentials are Git-ignored.
@@ -109,8 +111,8 @@ The installed Claude CLI is the initial execution adapter. Each participant logs
 
 ```powershell
 # In Alice's own environment and project clone:
-$env:COCLAUDE_TOKEN = 'alice-project-secret'
-mamba run -n coclaude-mvp coclaude worker --participant alice --repo D:/research/project --server http://127.0.0.1:8000 --once
+$env:RESEARCHRELAY_TOKEN = 'alice-project-secret'
+mamba run -n researchrelay researchrelay worker --participant alice --repo D:/research/project --server http://127.0.0.1:8000 --once
 ```
 
 The default Claude tools cover reading/writing artifacts. For execution, explicitly configure the worker's `--allowed-tools` to match authorized commands and local Claude permission rules; see [worker documentation](docs/worker.md). API-only/manual adapters can use the same task, claim, heartbeat, submit, block, and review endpoints without any provider dependency.
@@ -118,24 +120,24 @@ The default Claude tools cover reading/writing artifacts. For execution, explici
 Live publication is opt-in. Configure `origin` to the explicit GitHub project, authenticate `gh` in the participant's environment, and publish a task branch through a draft PR. The adapter verifies the destination, reuses an existing open PR, and never merges; repository protection and review rules remain in force. Fetch is fast-forward only. New versions edited directly in GitHub can be fetched and imported; conflicting immutable edits and divergent branches require reconciliation.
 
 ```powershell
-mamba run -n coclaude-mvp coclaude publish --repo D:/research/project --github TEAM/PROJECT --branch tasks/forecast-a/attempt-1 --title 'Forecast A evaluation' --body-file proposal.md
+mamba run -n researchrelay researchrelay publish --repo D:/research/project --github TEAM/PROJECT --branch tasks/forecast-a/attempt-1 --title 'Forecast A evaluation' --body-file proposal.md
 ```
 
 Run fetch/import/export on the **coordinator host** against its authoritative database and configured project-record clone. A remote participant publishes their task branch; they do not maintain a second execution-state database. The coordinator can fetch reviewed changes and export updated records on a separate records branch for another draft PR:
 
 ```powershell
-# On the coordinator host; use the repository path from COCLAUDE_REPO.
-mamba run -n coclaude-mvp coclaude fetch --repo D:/research/project-record --branch main
+# On the coordinator host; use the repository path from RESEARCHRELAY_REPO.
+mamba run -n researchrelay researchrelay fetch --repo D:/research/project-record --branch main
 git -C D:/research/project-record switch -c records/session-1
-mamba run -n coclaude-mvp coclaude export --repo D:/research/project-record
-mamba run -n coclaude-mvp coclaude publish --repo D:/research/project-record --github TEAM/PROJECT --branch records/session-1 --title 'Session project record' --body-file record-proposal.md
+mamba run -n researchrelay researchrelay export --repo D:/research/project-record
+mamba run -n researchrelay researchrelay publish --repo D:/research/project-record --github TEAM/PROJECT --branch records/session-1 --title 'Session project record' --body-file record-proposal.md
 ```
 
 The Claude invocation follows its [programmatic CLI interface](https://code.claude.com/docs/en/headless). Live PR operations use the [GitHub CLI](https://cli.github.com/manual/gh_pr_create). Live model execution and remote publication require a configured participant session and were not exercised in the credential-free smoke test.
 
 ## Team access and data
 
-The default server binds to loopback and rejects unauthenticated nonlocal API traffic. For team access, configure `COCLAUDE_TOKENS` as a JSON mapping from random project tokens to participant names; `human` is the coordination role. Workers may claim and submit only their owner's tasks; review identity must match the token. All tokens belong to this single project. Use a private network and HTTPS reverse proxy for remote access. The dashboard accepts a session token without adding it to exported artifacts.
+The default server binds to loopback and rejects unauthenticated nonlocal API traffic. For team access, configure `RESEARCHRELAY_TOKENS` as a JSON mapping from random project tokens to participant names; `human` is the coordination role. Workers may claim and submit only their owner's tasks; review identity must match the token. All tokens belong to this single project. Use a private network and HTTPS reverse proxy for remote access. The dashboard accepts a session token without adding it to exported artifacts.
 
 Git worktrees isolate filesystem changes and branches; they are **not an OS security sandbox**. Participants should use their own container/VM or restricted account for untrusted agent work. The system trusts participants' project access. Do not expose this pilot directly to the public internet.
 
@@ -152,7 +154,7 @@ Suggested session: paste or inspect the supplied notes, correct proposed scope, 
 ## Verification and limits
 
 ```powershell
-mamba run -n coclaude-mvp python -m pytest -q
+mamba run -n researchrelay python -m pytest -q
 ```
 
 Tests cover the scientific pilot and Git history, interrupted execution and claim fencing, competing claims, duplicate and conflicting submissions, dependency gating and stale versions, review/revision bounds, artifact validation, cancellation, repository update conflicts, direct Git imports, and API project-token scope. See [verification report](docs/verification.md) for the actual run and browser-check results.
@@ -160,12 +162,12 @@ Tests cover the scientific pilot and Git history, interrupted execution and clai
 The environment file installs the verified versions in `requirements.lock.txt`. Optional real-browser verification uses a fresh isolated service because it writes synthetic QA records:
 
 ```powershell
-mamba run -n coclaude-mvp python -m pip install -e '.[browser]'
-$env:COCLAUDE_DB = '.runtime/browser-check.db'
-$env:COCLAUDE_REPO = '.runtime/browser-check-record'
-mamba run -n coclaude-mvp coclaude serve --port 8767
+mamba run -n researchrelay python -m pip install -e '.[browser]'
+$env:RESEARCHRELAY_DB = '.runtime/browser-check.db'
+$env:RESEARCHRELAY_REPO = '.runtime/browser-check-record'
+mamba run -n researchrelay researchrelay serve --port 8767
 # In another terminal, with the service running:
-mamba run -n coclaude-mvp python scripts/ui_smoke.py --url http://127.0.0.1:8767
+mamba run -n researchrelay python scripts/ui_smoke.py --url http://127.0.0.1:8767
 ```
 
 The browser script defaults to installed Microsoft Edge on Windows; pass `--browser` with a local Chrome/Chromium executable on another platform.

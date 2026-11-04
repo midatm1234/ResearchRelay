@@ -73,8 +73,8 @@ def generate() -> None:
         properties["artifact_type"] = {"const": kind}
         schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": f"https://coclaude.local/schemas/{kind}/1.0",
-            "title": f"CoClaude {kind} artifact schema 1.0", "type": "object",
+            "$id": f"https://researchrelay.local/schemas/{kind}/1.0",
+            "title": f"ResearchRelay {kind} artifact schema 1.0", "type": "object",
             "required": list(COMMON) + ["artifact_type"] + special["required"],
             "properties": properties, "additionalProperties": True,
         }

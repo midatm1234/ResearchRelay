@@ -133,7 +133,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
         yield
         pool.shutdown(wait=False,cancel_futures=True)
 
-    app = FastAPI(title='Relay · Scientific Agent Coordination',version='0.1.0',lifespan=lifespan,
+    app = FastAPI(title='ResearchRelay · Scientific Agent Coordination',version='0.1.0',lifespan=lifespan,
                   description='One project per service. SQLite owns state; immutable Markdown artifacts travel between agents.')
     app.state.engine = coordinator
     app.state.settings = settings

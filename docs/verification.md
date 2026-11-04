@@ -1,13 +1,13 @@
 # MVP verification — November 3, 2026
 
-Verification ran on Windows with Git, the new `coclaude-mvp` mamba environment, Python 3.12.16, and the package versions in `requirements.lock.txt`. Browser QA used installed Microsoft Edge with Playwright. Source is on `dev/agent-collaboration-mvp`; `main` preserves the initial empty-repository baseline.
+Verification ran on Windows with Git, the new `researchrelay` mamba environment, Python 3.12.16, and the package versions in `requirements.lock.txt`. Browser QA used installed Microsoft Edge with Playwright. Source is on `dev/agent-collaboration-mvp`; `main` preserves the initial empty-repository baseline.
 
 ## What was actually exercised
 
 | Path | Evidence |
 | --- | --- |
-| Web service | The exact `mamba run -n coclaude-mvp coclaude serve --port 8000` command started successfully; health, dashboard, interface, and OpenAPI returned HTTP 200. |
-| Full CLI pilot | `coclaude demo --db .runtime/delivery.db --repo .runtime/delivery-record` completed with real calculations and local Git history. |
+| Web service | The exact `mamba run -n researchrelay researchrelay serve --port 8000` command started successfully; health, dashboard, interface, and OpenAPI returned HTTP 200. |
+| Full CLI pilot | `researchrelay demo --db .runtime/delivery.db --repo .runtime/delivery-record` completed with real calculations and local Git history. |
 | Full browser pilot | Started the pilot from the dashboard against an isolated database/repository; observed completion and a human decision request. |
 | Portable artifacts | Five JSON Schemas, all illustrative and actual pilot example records, and pinned example references validate. Markdown download and version history were exercised. |
 | Participant worker protocol | Actual HTTP integration through the test application retrieved a task and pinned input, claimed it, wrote scientific output through the provider-independent adapter, submitted it, and recorded its branch/commit. |
@@ -42,7 +42,7 @@ Concurrent provider-independent Alice/Bob workers also submitted separate branch
 The pilot tests run the complete calculation/review/Git workflow, resume after an injected interruption before review, and repeat a completed pilot without duplicate submissions, reviews, decisions, or Git commits. The worker tests exercise HTTP exchange without external credentials. Run:
 
 ```powershell
-mamba run -n coclaude-mvp python -m pytest -q
+mamba run -n researchrelay python -m pytest -q
 ```
 
 The test client emits one upstream Starlette/httpx deprecation warning; it does not affect service or test behavior. Python compilation and JavaScript syntax checks pass.
@@ -60,3 +60,9 @@ For reproduction, install `.[browser]`, launch a fresh isolated demo service as 
 ## Remaining practical limits
 
 Use one coordinator process and one project database. Agent worktrees isolate Git changes but do not sandbox system access. The meeting extractor is conservative and rule-based. Imported Git artifacts are validated evidence; task-scope changes require explicit coordination actions. Live Claude/GitHub interoperability needs a participant-authenticated session with a designated remote repository. Productivity gains remain an evaluation question.
+
+## ResearchRelay rename verification
+
+After moving the project to `D:\ResearchRelay`, the renamed `researchrelay` mamba environment, Python package, CLI, configuration variables, schema branding, documentation, and browser interface were verified again. All **50 tests passed in 67.74 seconds**. The renamed CLI service started successfully, and real Edge checks passed at 1512, 1200, 1000, 768, 760, and 390 pixels without horizontal overflow or JavaScript errors. Dependency checks and JavaScript syntax checks passed. Sixteen existing local Git worktrees were repaired after the directory move; archived scientific data/code bytes and recorded hashes remain unchanged.
+
+The application source repository uses the user-selected SSH remote `git@github.com:midatm1234/new.git`. Source publication is separate from the scientific worker pilot: live Claude execution and scientific GitHub PR orchestration remain unexercised.

@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from coclaude.engine import Engine, WorkflowError
+from researchrelay.engine import Engine, WorkflowError
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def table_count(engine, table, where="1", args=()):
 
 def test_interrupted_worker_reclaims_after_restart_and_old_token_cannot_submit(engine, monkeypatch):
     clock = [1000.0]
-    monkeypatch.setattr("coclaude.engine.time.time", lambda: clock[0])
+    monkeypatch.setattr("researchrelay.engine.time.time", lambda: clock[0])
     engine.create_task(**proposal(max_attempts=2))
     abandoned = engine.claim_task("analysis", "worker-before-restart", lease_seconds=10)
     restarted = Engine(engine.db_path, project_id="test-project")

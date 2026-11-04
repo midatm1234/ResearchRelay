@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
-from coclaude.api import create_app
-from coclaude.config import Settings
-from coclaude.engine import Engine
+from researchrelay.api import create_app
+from researchrelay.config import Settings
+from researchrelay.engine import Engine
 
 
 def client_for(tmp_path,tokens=None):

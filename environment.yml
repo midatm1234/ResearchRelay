@@ -1,4 +1,4 @@
-name: coclaude-mvp
+name: researchrelay
 channels:
   - conda-forge
 dependencies:

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://coclaude.local/schemas/result/1.0",
-  "title": "CoClaude result artifact schema 1.0",
+  "$id": "https://researchrelay.local/schemas/task/1.0",
+  "title": "ResearchRelay task artifact schema 1.0",
   "type": "object",
   "required": [
     "id",
@@ -24,14 +24,7 @@
     "repository_commits",
     "pull_requests",
     "artifact_type",
-    "task_id",
-    "data",
-    "code",
-    "configuration",
-    "environment",
-    "evidence",
-    "assumptions",
-    "limitations"
+    "owner"
   ],
   "properties": {
     "id": {
@@ -171,83 +164,23 @@
         ]
       }
     },
-    "task_id": {
+    "owner": {
       "type": "string",
-      "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      "minLength": 1
     },
-    "data": {
-      "type": [
-        "string",
-        "array",
-        "object"
-      ],
-      "minLength": 1,
-      "minItems": 1,
-      "minProperties": 1
-    },
-    "code": {
-      "type": [
-        "string",
-        "array",
-        "object"
-      ],
-      "minLength": 1,
-      "minItems": 1,
-      "minProperties": 1
-    },
-    "configuration": {
-      "type": [
-        "string",
-        "array",
-        "object"
-      ],
-      "minLength": 1,
-      "minItems": 1,
-      "minProperties": 1
-    },
-    "environment": {
-      "type": [
-        "string",
-        "array",
-        "object"
-      ],
-      "minLength": 1,
-      "minItems": 1,
-      "minProperties": 1
-    },
-    "evidence": {
-      "type": [
-        "string",
-        "array",
-        "object"
-      ],
-      "minLength": 1,
-      "minItems": 1,
-      "minProperties": 1
-    },
-    "assumptions": {
-      "type": "array",
-      "items": {
-        "type": [
-          "string",
-          "object"
-        ]
-      }
-    },
-    "limitations": {
-      "type": "array",
-      "items": {
-        "type": [
-          "string",
-          "object"
-        ]
-      }
-    },
-    "completion_notes": {
-      "type": "string"
+    "status": {
+      "enum": [
+        "queued",
+        "running",
+        "blocked",
+        "awaiting_review",
+        "completed",
+        "failed",
+        "canceled"
+      ]
     },
     "artifact_type": {
-      "const": "result"
+      "const": "task"
     }
   },
   "additionalProperties": true

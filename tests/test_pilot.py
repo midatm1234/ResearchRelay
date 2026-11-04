@@ -1,8 +1,8 @@
 import pytest
 
-from coclaude.engine import Engine
-from coclaude.pilot import run_pilot
-from coclaude.repository import _git
+from researchrelay.engine import Engine
+from researchrelay.pilot import run_pilot
+from researchrelay.repository import _git
 
 
 def assertions(engine, outcome):

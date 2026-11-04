@@ -26,7 +26,7 @@ def utc_now() -> str:
 def get_schema(artifact_type: str) -> dict[str, Any]:
     if artifact_type not in ARTIFACT_TYPES:
         raise ValueError(f"Unknown artifact type: {artifact_type!r}")
-    resource = files("coclaude").joinpath("schemas", f"{artifact_type}.v1.schema.json")
+    resource = files("researchrelay").joinpath("schemas", f"{artifact_type}.v1.schema.json")
     return json.loads(resource.read_text(encoding="utf-8"))
 
 

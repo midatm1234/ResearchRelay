@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const state = { dashboard: null, filter: 'all', search: '', meeting: null, pollBusy: false,
-  seen: Number(localStorage.getItem('relay:last-seen') || 0), pilotBusy: false };
+  seen: Number(localStorage.getItem('researchrelay:last-seen') || 0), pilotBusy: false };
 let toastTimer;
 
 function node(tag, attrs = {}, children = []) {
@@ -56,7 +56,7 @@ function notice(message, error = false) {
 }
 async function api(path, method = 'GET', data) {
   const headers = { Accept: 'application/json' };
-  const token = sessionStorage.getItem('relay:token');
+  const token = sessionStorage.getItem('researchrelay:token');
   if (token) headers.Authorization = `Bearer ${token}`;
   if (data !== undefined) headers['Content-Type'] = 'application/json';
   const response = await fetch(`/api${path}`, { method, headers, body: data === undefined ? undefined : JSON.stringify(data) });
@@ -367,7 +367,7 @@ document.querySelectorAll('.tab').forEach(button => button.addEventListener('cli
 document.querySelectorAll('.sidebar a.nav-link').forEach(link => link.addEventListener('click', () => { document.querySelectorAll('.nav-link').forEach(item => item.classList.toggle('selected', item === link)); }));
 $('task-search').addEventListener('input', event => { state.search = event.target.value.trim().toLowerCase(); renderTasks(); });
 $('refresh-button').addEventListener('click', () => refresh());
-$('mark-seen-button').addEventListener('click', () => { state.seen = latestSequence(state.dashboard || {}); localStorage.setItem('relay:last-seen', String(state.seen)); render(state.dashboard || {}); toast('Project updates marked as read.'); });
+$('mark-seen-button').addEventListener('click', () => { state.seen = latestSequence(state.dashboard || {}); localStorage.setItem('researchrelay:last-seen', String(state.seen)); render(state.dashboard || {}); toast('Project updates marked as read.'); });
 $('meeting-upload').addEventListener('change', async event => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -420,9 +420,9 @@ $('assessment-form').addEventListener('submit', event => {
   });
 });
 const accessButton = node('button', { class: 'text-button', text: 'Access', title: 'Configure a project-scoped access token for this browser session', onclick: () => {
-  const input = node('input', { type: 'password', autocomplete: 'off', placeholder: 'Project access token', value: sessionStorage.getItem('relay:token') || '', 'aria-label': 'Project access token' });
+  const input = node('input', { type: 'password', autocomplete: 'off', placeholder: 'Project access token', value: sessionStorage.getItem('researchrelay:token') || '', 'aria-label': 'Project access token' });
   const button = node('button', { type: 'submit', class: 'button primary', text: 'Use for this browser session' });
-  openDetail('Project access', 'OPTIONAL AUTHENTICATED SERVICE', [node('p', { class: 'section-intro', text: 'The local demonstration does not need a token. For a configured service, use your project-scoped token. It is held only in this browser session and sent to this service.' }), node('form', { onsubmit: event => { event.preventDefault(); const token = input.value.trim(); if (token) sessionStorage.setItem('relay:token', token); else sessionStorage.removeItem('relay:token'); $('detail-dialog').close(); refresh(); } }, [input, node('div', { class: 'detail-buttons' }, [button])])]);
+  openDetail('Project access', 'OPTIONAL AUTHENTICATED SERVICE', [node('p', { class: 'section-intro', text: 'The local demonstration does not need a token. For a configured service, use your project-scoped token. It is held only in this browser session and sent to this service.' }), node('form', { onsubmit: event => { event.preventDefault(); const token = input.value.trim(); if (token) sessionStorage.setItem('researchrelay:token', token); else sessionStorage.removeItem('researchrelay:token'); $('detail-dialog').close(); refresh(); } }, [input, node('div', { class: 'detail-buttons' }, [button])])]);
 } });
 document.querySelector('.topbar-right').append(accessButton);
 refresh();

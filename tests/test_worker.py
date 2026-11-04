@@ -4,11 +4,11 @@ import threading
 
 from fastapi.testclient import TestClient
 
-from coclaude.api import create_app
-from coclaude.artifacts import render_markdown
-from coclaude.config import Settings
-from coclaude.engine import Engine
-from coclaude.worker import Worker
+from researchrelay.api import create_app
+from researchrelay.artifacts import render_markdown
+from researchrelay.config import Settings
+from researchrelay.engine import Engine
+from researchrelay.worker import Worker
 
 
 def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monkeypatch):
@@ -21,7 +21,7 @@ def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monk
     settings = Settings(db_path=tmp_path / "state.db", repo_path=tmp_path / "record")
     adapter = Worker("http://testserver", "alice", tmp_path / "worker-record", mode="manual")
     def write_result(workspace, lost):
-        context = json.loads((workspace / ".coclaude-exchange/task-context.json").read_text(encoding="utf-8"))
+        context = json.loads((workspace / ".researchrelay-exchange/task-context.json").read_text(encoding="utf-8"))
         assert context["input_artifacts"][0]["id"] == "reference"
         assert "claim_token" not in context["task"]
         (workspace / "calculation.txt").write_text("RMSE = 1.0\n", encoding="utf-8")
@@ -30,7 +30,7 @@ def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monk
                     "code": ["calculation.txt"], "configuration": {"metric": "RMSE"},
                     "environment": {"python": "3.12"}, "evidence": {"rmse": 1.0},
                     "related_files": ["calculation.txt"]}
-        (workspace / ".coclaude-exchange/result.md").write_text(render_markdown(metadata, "# Score\n\nRMSE 1.0"), encoding="utf-8")
+        (workspace / ".researchrelay-exchange/result.md").write_text(render_markdown(metadata, "# Score\n\nRMSE 1.0"), encoding="utf-8")
     monkeypatch.setattr(adapter, "_wait_for_manual", write_result)
     with TestClient(create_app(settings, engine), base_url="http://testserver/api/") as client:
         adapter.client = client
@@ -39,20 +39,20 @@ def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monk
     assert engine.get_task("analysis")["status"] == "awaiting_review"
     assert engine.get_task("analysis")["repository"][0]["commit"] == outcome["commit"]
     assert engine.get_artifact("result-analysis")["metadata"]["input_refs"] == [{"id": "reference", "version": 1}]
-    from coclaude.repository import _git
+    from researchrelay.repository import _git
     files = _git(Path(outcome["workspace"]), "ls-tree", "-r", "--name-only", "HEAD").splitlines()
     assert "calculation.txt" in files
     assert "task-records/analysis/v1.md" in files and "task-records/analysis/attempt-1-context.json" in files
     assert "result.md" not in files and "task-context.json" not in files
-    assert not any(name.startswith(".coclaude-exchange/") for name in files)
+    assert not any(name.startswith(".researchrelay-exchange/") for name in files)
     assert "submission.json" not in files and "submission-id.txt" not in files
     assert _git(Path(outcome["workspace"]), "check-ignore", "submission.json") == "submission.json"
-    assert _git(Path(outcome["workspace"]), "check-ignore", ".coclaude-exchange/submission.json") == ".coclaude-exchange/submission.json"
+    assert _git(Path(outcome["workspace"]), "check-ignore", ".researchrelay-exchange/submission.json") == ".researchrelay-exchange/submission.json"
 
 
 def test_claude_child_environment_excludes_coordinator_credentials(tmp_path, monkeypatch):
-    monkeypatch.setenv("COCLAUDE_TOKEN", "private-worker-token")
-    monkeypatch.setenv("COCLAUDE_TOKENS", '{"private-admin-token":"human"}')
+    monkeypatch.setenv("RESEARCHRELAY_TOKEN", "private-worker-token")
+    monkeypatch.setenv("RESEARCHRELAY_TOKENS", '{"private-admin-token":"human"}')
     monkeypatch.setenv("ANTHROPIC_API_KEY", "participant-provider-key")
     captured = {}
     class Process:
@@ -63,28 +63,28 @@ def test_claude_child_environment_excludes_coordinator_credentials(tmp_path, mon
             return '{"is_error":false}', ""
         def poll(self):
             return 0
-    monkeypatch.setattr("coclaude.worker.subprocess.Popen", Process)
-    (tmp_path / ".coclaude-exchange").mkdir()
-    (tmp_path / ".coclaude-exchange/result.md").write_text("Agent output", encoding="utf-8")
+    monkeypatch.setattr("researchrelay.worker.subprocess.Popen", Process)
+    (tmp_path / ".researchrelay-exchange").mkdir()
+    (tmp_path / ".researchrelay-exchange/result.md").write_text("Agent output", encoding="utf-8")
     Worker("http://localhost", "alice", tmp_path / "record")._claude(tmp_path, threading.Event())
-    assert not any(key.startswith("COCLAUDE_") for key in captured["env"])
+    assert not any(key.startswith("RESEARCHRELAY_") for key in captured["env"])
     assert captured["env"]["ANTHROPIC_API_KEY"] == "participant-provider-key"
     assert "--dangerously-skip-permissions" not in captured["command"]
 
 
 def test_cli_demo_refuses_live_mode(monkeypatch, capsys):
     import pytest
-    from coclaude.cli import main
-    monkeypatch.setenv("COCLAUDE_MODE", "live")
+    from researchrelay.cli import main
+    monkeypatch.setenv("RESEARCHRELAY_MODE", "live")
     with pytest.raises(SystemExit) as error:
         main(["demo"])
     assert error.value.code == 2
-    assert "only available with COCLAUDE_MODE=demo" in capsys.readouterr().err
+    assert "only available with RESEARCHRELAY_MODE=demo" in capsys.readouterr().err
 
 
 def test_independent_worker_branches_merge_without_exchange_conflicts(tmp_path, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
-    from coclaude.repository import Repository, _git
+    from researchrelay.repository import Repository, _git
     engine = Engine(tmp_path / "state.db")
     for task_id, owner in (("analysis-a", "alice"), ("analysis-b", "bob")):
         engine.create_task(id=task_id, title=task_id, owner=owner, objective="Compute independent evidence",
@@ -97,7 +97,7 @@ def test_independent_worker_branches_merge_without_exchange_conflicts(tmp_path, 
     repo._commit(repo.path, "Preserve existing project exchange filenames")
     adapters = [Worker("http://testserver", owner, repo.path, mode="manual") for owner in ("alice", "bob")]
     def produce(workspace, lost):
-        exchange = workspace / ".coclaude-exchange"
+        exchange = workspace / ".researchrelay-exchange"
         task = json.loads((exchange / "task-context.json").read_text(encoding="utf-8"))["task"]
         output = f"outputs/{task['id']}.txt"
         (workspace / "outputs").mkdir(exist_ok=True)
@@ -124,4 +124,4 @@ def test_independent_worker_branches_merge_without_exchange_conflicts(tmp_path, 
         assert (repo.path / f"task-records/{task_id}/v1.md").exists()
         assert (repo.path / f"task-records/{task_id}/attempt-1-context.json").exists()
         assert (repo.path / f"outputs/{task_id}.txt").exists()
-    assert not (repo.path / ".coclaude-exchange").exists()
+    assert not (repo.path / ".researchrelay-exchange").exists()

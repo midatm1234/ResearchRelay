@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://coclaude.local/schemas/decision/1.0",
-  "title": "CoClaude decision artifact schema 1.0",
+  "$id": "https://researchrelay.local/schemas/meeting/1.0",
+  "title": "ResearchRelay meeting artifact schema 1.0",
   "type": "object",
   "required": [
     "id",
@@ -24,11 +24,10 @@
     "repository_commits",
     "pull_requests",
     "artifact_type",
-    "question",
-    "options",
-    "evidence",
-    "consequence",
-    "status"
+    "summary",
+    "decisions",
+    "proposed_tasks",
+    "questions"
   ],
   "properties": {
     "id": {
@@ -168,10 +167,10 @@
         ]
       }
     },
-    "question": {
+    "summary": {
       "type": "string"
     },
-    "options": {
+    "decisions": {
       "type": "array",
       "items": {
         "type": [
@@ -180,7 +179,13 @@
         ]
       }
     },
-    "evidence": {
+    "proposed_tasks": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "questions": {
       "type": "array",
       "items": {
         "type": [
@@ -189,19 +194,15 @@
         ]
       }
     },
-    "consequence": {
-      "type": "string"
-    },
-    "status": {
+    "scope_status": {
       "enum": [
-        "open",
-        "pending",
-        "resolved",
-        "deferred"
+        "proposed",
+        "approved",
+        "superseded"
       ]
     },
     "artifact_type": {
-      "const": "decision"
+      "const": "meeting"
     }
   },
   "additionalProperties": true

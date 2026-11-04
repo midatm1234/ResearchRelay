@@ -70,9 +70,9 @@ class Worker:
         try:
             isolation = self.repository.isolated_branch(task["id"], task["attempts"])
             workspace = Path(isolation["workspace"])
-            exchange = workspace / ".coclaude-exchange"
-            if _git(workspace, "ls-files", "--", ".coclaude-exchange"):
-                raise RuntimeError("Reserved .coclaude-exchange path is already tracked; reconcile the repository before running this worker")
+            exchange = workspace / ".researchrelay-exchange"
+            if _git(workspace, "ls-files", "--", ".researchrelay-exchange"):
+                raise RuntimeError("Reserved .researchrelay-exchange path is already tracked; reconcile the repository before running this worker")
             if not exchange.resolve().is_relative_to(workspace.resolve()):
                 raise RuntimeError("Worker exchange directory resolves outside its isolated worktree")
             exchange.mkdir(exist_ok=True)
@@ -96,7 +96,7 @@ class Worker:
             elif self.mode == "manual":
                 self._wait_for_manual(workspace, lost)
             else:
-                raise ValueError("Worker mode must be claude or manual; deterministic pilot uses coclaude demo")
+                raise ValueError("Worker mode must be claude or manual; deterministic pilot uses researchrelay demo")
             if lost.is_set():
                 raise RuntimeError("Claim lost or task canceled; result retained locally, not submitted")
             metadata, body = parse_markdown(result_path.read_text(encoding="utf-8"))
@@ -120,7 +120,7 @@ class Worker:
                 candidate = (workspace / name).resolve()
                 if not candidate.is_relative_to(workspace.resolve()):
                     raise ValueError("Result file reference escapes the isolated worktree")
-                if any(part.startswith(".env") or part in {".git", ".coclaude-exchange", "submission.json", "submission-id.txt"}
+                if any(part.startswith(".env") or part in {".git", ".researchrelay-exchange", "submission.json", "submission-id.txt"}
                        or "credential" in part.lower() or "secret" in part.lower() for part in Path(name).parts):
                     raise ValueError("Credential or runtime submission files cannot be committed as outputs")
                 if candidate.is_file() and name not in files:
@@ -158,9 +158,9 @@ class Worker:
             thread.join(timeout=2)
 
     def _wait_for_manual(self, workspace: Path, lost: threading.Event) -> None:
-        exchange = workspace / ".coclaude-exchange"
+        exchange = workspace / ".researchrelay-exchange"
         print(json.dumps({"status": "waiting_for_manual_result", "workspace": str(workspace), "exchange": str(exchange),
-                          "instructions": "Use your own agent/tools to write .coclaude-exchange/result.md; heartbeat remains active."}), flush=True)
+                          "instructions": "Use your own agent/tools to write .researchrelay-exchange/result.md; heartbeat remains active."}), flush=True)
         deadline = time.monotonic() + self.timeout
         while not (exchange / "result.md").exists():
             if lost.is_set():
@@ -171,21 +171,21 @@ class Worker:
 
     def _claude(self, workspace: Path, lost: threading.Event) -> None:
         prompt = (
-            "Execute the authorized scientific task in .coclaude-exchange/task-context.json using the pinned input artifact versions. "
+            "Execute the authorized scientific task in .researchrelay-exchange/task-context.json using the pinned input artifact versions. "
             "Work only in this worktree and within acceptance criteria. Do not change scope or publish/merge. "
-            "Write .coclaude-exchange/result.md as Markdown with YAML front matter matching .coclaude-exchange/context-schema.json. "
+            "Write .researchrelay-exchange/result.md as Markdown with YAML front matter matching .researchrelay-exchange/context-schema.json. "
             "Use artifact ID result-{task.id}, project_id from task, version task.revision_count+1. "
             "Include data and code paths with SHA256 checksums, configuration, environment, evidence, assumptions, "
             "limitations, validation_results, unresolved_questions, next_actions, input_refs and task_id. "
             "Do not invent successful computations or credentials. Record blockers in the result."
         )
-        exchange = workspace / ".coclaude-exchange"
+        exchange = workspace / ".researchrelay-exchange"
         exchange.mkdir(exist_ok=True)
         (exchange / "context-schema.json").write_text(json.dumps(get_schema("result"), indent=2), encoding="utf-8")
         command = ["claude", "-p", prompt, "--output-format", "json", "--max-turns", "20",
                    "--permission-mode", "dontAsk", "--tools", self.allowed_tools,
                    "--allowedTools", self.allowed_tools]
-        child_env = {k: v for k, v in os.environ.items() if not k.upper().startswith("COCLAUDE_")}
+        child_env = {k: v for k, v in os.environ.items() if not k.upper().startswith("RESEARCHRELAY_")}
         process = subprocess.Popen(command, cwd=workspace, env=child_env,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         deadline = time.monotonic() + self.timeout
@@ -206,7 +206,7 @@ class Worker:
             if envelope.get("is_error"):
                 raise RuntimeError("Claude reported an execution error; inspect participant environment")
             if not (exchange / "result.md").exists():
-                raise RuntimeError("Claude did not write .coclaude-exchange/result.md; inspect task scope and tool permissions")
+                raise RuntimeError("Claude did not write .researchrelay-exchange/result.md; inspect task scope and tool permissions")
         finally:
             if process.poll() is None:
                 process.kill()

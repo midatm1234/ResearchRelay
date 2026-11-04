@@ -3,8 +3,8 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from coclaude.artifacts import ARTIFACT_TYPES, get_schema, parse_markdown, render_markdown, validate_artifact
-from coclaude.meetings import extract_meeting
+from researchrelay.artifacts import ARTIFACT_TYPES, get_schema, parse_markdown, render_markdown, validate_artifact
+from researchrelay.meetings import extract_meeting
 
 
 def test_artifact_roundtrip_and_pinned_references():

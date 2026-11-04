@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="coclaude", description="Experimental artifact-first scientific coordination")
+    parser = argparse.ArgumentParser(prog="researchrelay", description="Experimental artifact-first scientific coordination")
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="Start the local coordinator and dashboard")
     serve.add_argument("--host", default="127.0.0.1")
@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> None:
     publish.add_argument("--repo", required=True)
     publish.add_argument("--github", required=True, help="owner/repository (must match origin)")
     publish.add_argument("--branch", required=True)
-    publish.add_argument("--base", default=None, help="Defaults to COCLAUDE_GITHUB_BASE (main)")
+    publish.add_argument("--base", default=None, help="Defaults to RESEARCHRELAY_GITHUB_BASE (main)")
     publish.add_argument("--title", required=True)
     publish.add_argument("--body-file", required=True)
     sync = commands.add_parser("fetch", help="Fast-forward reviewed Git changes, then import artifacts")
@@ -45,16 +45,16 @@ def main(argv: list[str] | None = None) -> None:
     from .config import Settings
     settings = Settings()
     if args.command == "demo" and settings.mode != "demo":
-        parser.error("The synthetic pilot is only available with COCLAUDE_MODE=demo; select a separate demo database/repository")
+        parser.error("The synthetic pilot is only available with RESEARCHRELAY_MODE=demo; select a separate demo database/repository")
     if args.command == "serve":
         if args.host not in {"127.0.0.1", "localhost", "::1"} and not settings.tokens:
-            parser.error("Configure project-scoped COCLAUDE_TOKENS before binding to a non-loopback interface")
+            parser.error("Configure project-scoped RESEARCHRELAY_TOKENS before binding to a non-loopback interface")
         import uvicorn
-        uvicorn.run("coclaude.api:app", host=args.host, port=args.port)
+        uvicorn.run("researchrelay.api:app", host=args.host, port=args.port)
         return
     if args.command == "worker":
         from .worker import Worker
-        adapter = Worker(args.server, args.participant, args.repo, token=os.getenv("COCLAUDE_TOKEN"),
+        adapter = Worker(args.server, args.participant, args.repo, token=os.getenv("RESEARCHRELAY_TOKEN"),
                          mode=args.mode, timeout=args.timeout, allowed_tools=args.allowed_tools)
         if args.resubmit:
             if not args.task:

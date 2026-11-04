@@ -61,15 +61,15 @@ class Repository:
         exclude = common / "info" / "exclude"
         exclude.parent.mkdir(parents=True, exist_ok=True)
         existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
-        patterns = [".coclaude-exchange/", "submission.json", "submission-id.txt", ".env", ".env.*"]
+        patterns = [".researchrelay-exchange/", "submission.json", "submission-id.txt", ".env", ".env.*"]
         missing = [pattern for pattern in patterns if pattern not in existing.splitlines()]
         if missing:
             with exclude.open("a", encoding="utf-8") as stream:
-                stream.write("\n# CoClaude local runtime credentials (shared by task worktrees)\n" + "\n".join(missing) + "\n")
+                stream.write("\n# ResearchRelay local runtime credentials (shared by task worktrees)\n" + "\n".join(missing) + "\n")
 
     def _commit(self, path: Path, message: str) -> str:
         # Per-command identity keeps user/global Git settings unchanged.
-        _git(path, "-c", "user.name=CoClaude record", "-c", "user.email=record@localhost.invalid",
+        _git(path, "-c", "user.name=ResearchRelay record", "-c", "user.email=record@localhost.invalid",
              "commit", "-m", message)
         return _git(path, "rev-parse", "HEAD")
 
@@ -112,7 +112,7 @@ class Repository:
             if _git(self.path, "status", "--porcelain"):
                 raise RepositoryConflict("Project working directory has uncommitted changes; commit or reconcile them first")
             merged = subprocess.run(
-                ["git", "-C", str(self.path), "-c", "user.name=CoClaude record",
+                ["git", "-C", str(self.path), "-c", "user.name=ResearchRelay record",
                  "-c", "user.email=record@localhost.invalid", "merge", "--no-ff", branch,
                  "-m", f"Local demo reviewed proposal: {task_id} (simulated PR)"],
                 capture_output=True, text=True, timeout=90)

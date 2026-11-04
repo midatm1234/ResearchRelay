@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from coclaude.artifacts import render_markdown
-from coclaude.engine import Engine
-from coclaude.repository import Repository, RepositoryConflict, _git
+from researchrelay.artifacts import render_markdown
+from researchrelay.engine import Engine
+from researchrelay.repository import Repository, RepositoryConflict, _git
 
 
 def record(engine):

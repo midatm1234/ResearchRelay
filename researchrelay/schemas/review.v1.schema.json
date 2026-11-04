@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://coclaude.local/schemas/review/1.0",
-  "title": "CoClaude review artifact schema 1.0",
+  "$id": "https://researchrelay.local/schemas/review/1.0",
+  "title": "ResearchRelay review artifact schema 1.0",
   "type": "object",
   "required": [
     "id",

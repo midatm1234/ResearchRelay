@@ -1,4 +1,4 @@
-# Relay browser interface
+# ResearchRelay browser interface
 
 The dashboard is served by FastAPI at `/`. Its plain HTML/CSS/JavaScript interface needs no build tool. External Google Fonts are optional; operating-system fallbacks keep the interface usable offline.
 

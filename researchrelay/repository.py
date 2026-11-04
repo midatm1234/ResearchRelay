@@ -23,7 +23,7 @@ class RepositoryConflict(RuntimeError):
 
 def _git(path: Path, *args: str, check: bool = True) -> str:
     completed = subprocess.run(["git", "-C", str(path), *args], text=True,
-                               capture_output=True, check=False, timeout=90)
+                               encoding="utf-8", capture_output=True, check=False, timeout=90)
     if check and completed.returncode:
         # Do not echo remote URLs or helper output that might contain credentials.
         raise RepositoryConflict(f"Git {args[0]} failed (exit {completed.returncode}); inspect this repository locally.")
@@ -40,7 +40,7 @@ class Repository:
     _lock = threading.RLock()
 
     def __init__(self, path: str | Path):
-        self.path = Path(path).resolve()
+        self.path = Path(path).expanduser().resolve()
         self.workspaces = self.path.parent / (self.path.name + "-workspaces")
 
     def initialize(self) -> None:
@@ -115,7 +115,7 @@ class Repository:
                 ["git", "-C", str(self.path), "-c", "user.name=ResearchRelay record",
                  "-c", "user.email=record@localhost.invalid", "merge", "--no-ff", branch,
                  "-m", f"Local demo reviewed proposal: {task_id} (simulated PR)"],
-                capture_output=True, text=True, timeout=90)
+                capture_output=True, text=True, encoding="utf-8", timeout=90)
             if merged.returncode:
                 _git(self.path, "merge", "--abort", check=False)
                 raise RepositoryConflict(f"Conflicting edits on {branch}; task branch retained. Compare it with the project branch and resolve in a fresh worktree.")
@@ -237,14 +237,14 @@ class Repository:
         _git(self.path, "push", "origin", f"{branch}:{branch}")
         existing = subprocess.run(["gh", "pr", "list", "--repo", repository, "--head", branch,
                                    "--base", base, "--json", "url", "--state", "open"],
-                                  capture_output=True, text=True, timeout=60, check=True)
+                                  capture_output=True, text=True, encoding="utf-8", timeout=60, check=True)
         found = json.loads(existing.stdout)
         if found:
             return {"url": found[0]["url"], "branch": branch, "reused": True}
         # stdin preserves exact body formatting and keeps it out of shell interpolation.
         created = subprocess.run(["gh", "pr", "create", "--repo", repository, "--head", branch,
                                   "--base", base, "--title", title, "--body-file", "-", "--draft"],
-                                 input=body, capture_output=True, text=True, timeout=90, check=True)
+                                 input=body, capture_output=True, text=True, encoding="utf-8", timeout=90, check=True)
         return {"url": created.stdout.strip(), "branch": branch, "draft": True, "merged": False}
 
     def fetch_reviewed(self, remote_branch: str = "main") -> dict:

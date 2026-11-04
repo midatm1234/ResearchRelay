@@ -17,8 +17,8 @@ class Settings:
     github_base: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_BASE', 'main'))
 
     def __post_init__(self):
-        self.db_path = Path(self.db_path)
-        self.repo_path = Path(self.repo_path)
+        self.db_path = Path(self.db_path).expanduser()
+        self.repo_path = Path(self.repo_path).expanduser()
         if self.mode not in {'demo', 'live'}:
             raise ValueError('RESEARCHRELAY_MODE must be demo or live')
 

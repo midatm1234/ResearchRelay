@@ -1,6 +1,7 @@
 """Optional real-browser smoke. Start an isolated service first; see --help.
 
-Requires `python -m pip install playwright`; uses an installed Chrome/Edge.
+Requires `python -m pip install playwright` and `python -m playwright install chromium`.
+Uses Playwright's Chromium on any supported OS; --browser accepts an existing browser.
 This script intentionally writes synthetic QA tasks/decisions to its target.
 """
 from __future__ import annotations
@@ -56,13 +57,16 @@ def check_reconciliation(page, url):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url', default='http://127.0.0.1:8767')
-    parser.add_argument('--browser', default=r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe')
+    parser.add_argument('--browser', help='Optional Chrome/Edge executable; defaults to Playwright-managed Chromium.')
     parser.add_argument('--screenshot', default='.runtime/dashboard.png')
     parser.add_argument('--reconciliation-only', action='store_true', help='Run only the changed-input reconciliation regression.')
     args = parser.parse_args()
     errors = []
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=args.browser, headless=True)
+        launch_options = {'headless': True}
+        if args.browser:
+            launch_options['executable_path'] = str(Path(args.browser).expanduser())
+        browser = playwright.chromium.launch(**launch_options)
         page = browser.new_page(viewport={'width': 1512, 'height': 1100}, device_scale_factor=1)
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(args.url, wait_until='networkidle')

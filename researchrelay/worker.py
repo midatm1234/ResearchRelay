@@ -187,7 +187,7 @@ class Worker:
                    "--allowedTools", self.allowed_tools]
         child_env = {k: v for k, v in os.environ.items() if not k.upper().startswith("RESEARCHRELAY_")}
         process = subprocess.Popen(command, cwd=workspace, env=child_env,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
         deadline = time.monotonic() + self.timeout
         try:
             while True:
@@ -213,7 +213,7 @@ class Worker:
                 process.communicate(timeout=10)
 
     def resubmit(self, payload_path: str | Path, task_id: str) -> dict:
-        return self._post(f"tasks/{task_id}/submit", json.loads(Path(payload_path).read_text(encoding="utf-8")))
+        return self._post(f"tasks/{task_id}/submit", json.loads(Path(payload_path).expanduser().read_text(encoding="utf-8")))
 
     def review(self, task_id: str, verdict: str, rationale: str,
                criteria: list[str], result_version: int) -> dict:

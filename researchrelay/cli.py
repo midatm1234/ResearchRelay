@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> None:
     from .repository import Repository
     if args.command == "publish":
         outcome = Repository(args.repo).publish_github(args.branch, args.title,
-                    Path(args.body_file).read_text(encoding="utf-8"), args.base or settings.github_base, args.github)
+                    Path(args.body_file).expanduser().read_text(encoding="utf-8"), args.base or settings.github_base, args.github)
     else:
         from .engine import Engine
         engine = Engine(args.db or settings.db_path, project_id=settings.project_id)

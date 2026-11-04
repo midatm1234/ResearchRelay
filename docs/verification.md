@@ -66,3 +66,17 @@ Use one coordinator process and one project database. Agent worktrees isolate Gi
 After moving the project to `D:\ResearchRelay`, the renamed `researchrelay` mamba environment, Python package, CLI, configuration variables, schema branding, documentation, and browser interface were verified again. All **50 tests passed in 67.74 seconds**. The renamed CLI service started successfully, and real Edge checks passed at 1512, 1200, 1000, 768, 760, and 390 pixels without horizontal overflow or JavaScript errors. Dependency checks and JavaScript syntax checks passed. Sixteen existing local Git worktrees were repaired after the directory move; archived scientific data/code bytes and recorded hashes remain unchanged.
 
 The application source repository uses the user-selected SSH remote `git@github.com:midatm1234/new.git`. Source publication is separate from the scientific worker pilot: live Claude execution and scientific GitHub PR orchestration remain unexercised.
+
+## macOS compatibility work — November 4, 2026
+
+The local execution host is Windows 11 / AMD64 with Python 3.12.16. These local results are not macOS runtime results:
+
+- **53 automated tests passed in 73.43 seconds**, including home-relative configuration and constructor paths, repositories with spaces/non-ASCII names, UTF-8 Git output, and saved worker submissions under the home directory.
+- `python -m pip wheel --no-deps --wheel-dir .runtime/dist .` produced the platform-independent application wheel; its static interface and JSON Schemas were verified in the archive. `pip check`, Python compilation, JavaScript syntax, and whitespace checks passed.
+- `python scripts/smoke.py` passed real CLI startup, HTTP resources, parallel scoring, dependent synthesis, justified revision, Git recording, a human decision, and idempotent pilot replay. Its service runs from a temporary directory containing spaces and cleans itself up.
+- `python scripts/smoke.py --browser` passed the complete UI workflow with Playwright-managed Chromium and no page errors. It includes meeting corrections, reviews, decision resolution, assessment, mobile layout, and stale-input reconciliation. This no longer depends on a Windows Edge path.
+- Binary-only dependency downloads for CPython 3.12 succeeded for both `macosx_11_0_arm64` and `macosx_11_0_x86_64`. This checks wheel availability, not Mac installation or execution. The Windows-only Colorama pin now uses an environment marker.
+
+The new [native macOS workflow](../.github/workflows/macos.yml) verifies Python architecture and runs installation, the complete test suite, dependency checks, a wheel build, API/pilot smoke, and browser smoke on `macos-15` (arm64) and `macos-15-intel` (x86_64). Consult the [Actions runs](https://github.com/midatm1234/ResearchRelay/actions/workflows/macos.yml) for the matching commit; configuration of that matrix alone does not establish that either native run passed.
+
+The Miniforge installer itself is not exercised by this pip-based CI. Interactive native Miniforge installation, macOS 11–14, Safari automation, live Claude execution/credentials, and GitHub scientific PR orchestration remain outside these checks. No changes to archived scientific data/code bytes or their recorded hashes were made.

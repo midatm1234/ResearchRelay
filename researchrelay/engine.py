@@ -30,7 +30,7 @@ class WorkflowError(ValueError):
 
 class Engine:
     def __init__(self, db_path, project_id='forecast-pilot'):
-        self.db_path = Path(db_path)
+        self.db_path = Path(db_path).expanduser()
         self.project_id = project_id
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:

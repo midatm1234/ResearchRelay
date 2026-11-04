@@ -4,30 +4,42 @@ A working experiment for a small scientific team whose participant agents collab
 
 ## Start here
 
-Git and mamba must be installed.
+Use Python 3.12 and Git 2.28 or newer. The web interface has no Node.js build step; SQLite is included with Python. The local pilot needs neither Claude nor GitHub credentials. [macOS setup](#macos-setup-apple-silicon-and-intel) below covers both Mac architectures.
 
-The source is in [midatm1234/new](https://github.com/midatm1234/ResearchRelay). Clone it into the application directory with `git clone git@github.com:midatm1234/new.git ResearchRelay`.
+The source is in [midatm1234/ResearchRelay](https://github.com/midatm1234/ResearchRelay). In a new checkout:
 
-```powershell
+```bash
+git clone https://github.com/midatm1234/ResearchRelay.git
+cd ResearchRelay
 mamba env create -f environment.yml
 mamba run -n researchrelay researchrelay serve --port 8000
 ```
 
-The environment has already been created on the development machine. Open **http://127.0.0.1:8000**, then choose **Run local pilot**. The browser can close while the service and workers continue.
+Run service, demo, and test commands from the checkout directory. Open **http://127.0.0.1:8000**, then choose **Run local pilot**. The browser can close while the service and workers continue. Stop the service with Ctrl+C. Existing users can skip cloning and environment creation.
+
+To evaluate these changes before they merge into `main`, run `git switch dev/agent-collaboration-mvp` after cloning and before installing the environment.
 
 To run the same demonstration from another terminal against the dashboard's default database:
 
-```powershell
+```bash
 mamba run -n researchrelay researchrelay demo
 ```
 
 Use the button or CLI once; both coordinate through the same SQLite database. To run an independent fresh experiment without deleting existing work:
 
-```powershell
+```bash
 mamba run -n researchrelay researchrelay demo --db .runtime/session-2.db --repo .runtime/session-2-record
 ```
 
-To show that independent experiment in the dashboard, start a separate service:
+To show that independent experiment in the dashboard, start a separate service. In macOS/Linux zsh or bash:
+
+```bash
+export RESEARCHRELAY_DB='.runtime/session-2.db'
+export RESEARCHRELAY_REPO='.runtime/session-2-record'
+mamba run -n researchrelay researchrelay serve --port 8001
+```
+
+In Windows PowerShell:
 
 ```powershell
 $env:RESEARCHRELAY_DB = '.runtime/session-2.db'
@@ -36,6 +48,98 @@ mamba run -n researchrelay researchrelay serve --port 8001
 ```
 
 API documentation: **http://127.0.0.1:8000/docs**. Configuration: copy `.env.example` to `.env` and edit. Runtime state and credentials are Git-ignored.
+
+## macOS setup (Apple Silicon and Intel)
+
+### Prerequisites and architecture
+
+- Install Git 2.28+ (`git --version`). Apple's Command Line Tools provide Git; run `xcode-select --install` if they are missing and finish the installer before continuing.
+- Install [Miniforge3](https://github.com/conda-forge/miniforge#requirements-and-installers) for your native architecture: **arm64** on Apple Silicon, **x86_64** on Intel. Current Miniforge installers require macOS 11+. Open a new Terminal after the installer initializes your shell so `mamba --version` works. These are upstream installer requirements, not a claim that every macOS version has been tested with this application.
+- Use a native Terminal on Apple Silicon, rather than a Terminal opened using Rosetta. `uname -m` should report `arm64` on Apple Silicon and `x86_64` on Intel. Keep Miniforge, Python, and their packages on the same architecture. No GPU, CUDA, Homebrew, Docker, or Rosetta is required for the pilot.
+- Keep the checkout and runtime directories in a user-writable location, such as `~/Projects/ResearchRelay`. Do not use `sudo pip`, change system Python, or grant Full Disk Access just to start this service. Git worktrees need a local writable filesystem; avoid read-only or cloud-synchronized project-record directories.
+
+Miniforge's base Python version can differ from the application environment. `environment.yml` creates a separate native **Python 3.12** environment on either Mac architecture. The pinned native dependencies have CPython 3.12 wheels for both architectures; using the pinned interpreter avoids unnecessary local C/Rust builds. An already installed environment can be inspected with:
+
+```bash
+uname -m
+git --version
+mamba --version
+mamba run -n researchrelay python -c 'import platform; print(platform.python_version(), platform.machine())'
+```
+
+### Install and configure
+
+After installing the prerequisites, use a normal zsh/bash Terminal:
+
+```bash
+mkdir -p "$HOME/Projects"
+cd "$HOME/Projects"
+git clone https://github.com/midatm1234/ResearchRelay.git
+cd ResearchRelay
+mamba env create -f environment.yml
+cp .env.example .env
+```
+
+If you already cloned the repository, start with `cd` into that checkout instead. If the `researchrelay` environment already exists, use `mamba run -n researchrelay python -m pip install -r requirements.lock.txt -e ".[dev]"` to update its dependencies. Quote extras such as `".[dev]"` in zsh to prevent filename expansion.
+
+Edit `.env` with your text editor. Its default `RESEARCHRELAY_MODE=demo`, empty token mapping, and `.runtime/` paths are enough for the local pilot. To keep state outside the checkout, paths in this file may use `~` and spaces, for example:
+
+```dotenv
+RESEARCHRELAY_DB="~/Library/Application Support/ResearchRelay/state.db"
+RESEARCHRELAY_REPO="~/Library/Application Support/ResearchRelay/project-record"
+```
+
+Relative paths are resolved from the directory where the command runs; `~` expands to your home directory. Keep using the same `.env` and working directory in both terminals. The application creates the state/worktree directories with your normal account permissions. `.env` is ignored by Git; do not put provider credentials in project artifacts.
+
+### Start, demonstrate, and test
+
+Terminal 1, from the checkout:
+
+```bash
+mamba run -n researchrelay researchrelay serve --host 127.0.0.1 --port 8000
+```
+
+Open **http://127.0.0.1:8000**. In Terminal 2, `cd` into the same checkout and run the demonstration, or use the dashboard's **Run local pilot** button:
+
+```bash
+mamba run -n researchrelay researchrelay demo
+mamba run -n researchrelay python -m pytest -q
+mamba run -n researchrelay python -m pip check
+mamba run -n researchrelay python scripts/smoke.py
+```
+
+`scripts/smoke.py` starts and stops its own service on a temporary loopback port, using an isolated database/project repository. It checks HTTP startup, parallel scoring, dependent synthesis, review/revision, Git records, and the human decision. It does not alter your working-session state. The full test suite also exercises paths containing spaces and non-ASCII text, home-relative paths, interruption, and concurrency.
+
+To build the wheel without adding a separate build tool:
+
+```bash
+mamba run -n researchrelay python -m pip wheel --no-deps --wheel-dir .runtime/dist .
+```
+
+For a Python-only setup, install a native Python 3.12 interpreter first, then run `python3.12 -m venv .venv`, `source .venv/bin/activate`, and `python -m pip install -r requirements.lock.txt -e ".[dev]"` from the checkout. Replace `mamba run -n researchrelay` in subsequent commands with the active environment's command (for example, `python scripts/smoke.py` or `researchrelay serve`). Never reuse a Windows virtual environment on a Mac.
+
+### Optional browser and live-worker checks
+
+The service works in your normal browser without Playwright. Automated browser tests use [Playwright-managed Chromium](https://playwright.dev/python/docs/browsers), on either architecture, rather than a Windows executable path. Current [Playwright requirements](https://playwright.dev/python/docs/intro#system-requirements) specify macOS 14+ for this optional test tool.
+
+```bash
+mamba run -n researchrelay python -m pip install -e ".[browser]"
+mamba run -n researchrelay python -m playwright install chromium
+mamba run -n researchrelay python scripts/smoke.py --browser
+```
+
+For an existing Chrome installation, `scripts/ui_smoke.py --browser "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` selects that executable; the complete isolated-service invocation is documented in [verification](#verification-and-limits). Safari is usable as an ordinary browser, but this Chromium smoke does not automate Safari.
+
+Claude and `gh` are needed only for live execution/publication. Install/authenticate them in each participant's own environment and ensure `claude --version` and `gh --version` work in the same Terminal that starts the worker. macOS example:
+
+```bash
+export RESEARCHRELAY_TOKEN='alice-project-secret'
+mamba run -n researchrelay researchrelay worker --participant alice --repo "$HOME/Projects/team-project" --server http://127.0.0.1:8000 --once
+```
+
+Replace that token and repository path with your actual project configuration. Default worker tools support files; authorize the scientific execution tools separately as described in [worker integration](docs/worker.md). The local demo does not exercise live Claude credentials, GitHub PR policy, or macOS privacy prompts for restricted folders.
+
+The [macOS compatibility workflow](.github/workflows/macos.yml) runs native Python 3.12 on Apple Silicon and Intel macOS 15 runners, including tests, a wheel build, service/pilot smoke, and browser smoke. See [verification results](docs/verification.md) for actual execution results and remaining limitations; a passing dependency download on Windows alone is not macOS execution.
 
 ## The pilot
 
@@ -161,16 +265,35 @@ Tests cover the scientific pilot and Git history, interrupted execution and clai
 
 The environment file installs the verified versions in `requirements.lock.txt`. Optional real-browser verification uses a fresh isolated service because it writes synthetic QA records:
 
+```bash
+mamba run -n researchrelay python -m pip install -e ".[browser]"
+mamba run -n researchrelay python -m playwright install chromium
+mamba run -n researchrelay python scripts/smoke.py --browser
+```
+
+For manual inspection with a separate browser smoke script, keep an isolated service running. On macOS/Linux:
+
+```bash
+export RESEARCHRELAY_DB='.runtime/browser-check.db'
+export RESEARCHRELAY_REPO='.runtime/browser-check-record'
+mamba run -n researchrelay researchrelay serve --port 8767
+```
+
+On Windows PowerShell, use these environment assignments instead:
+
 ```powershell
-mamba run -n researchrelay python -m pip install -e '.[browser]'
 $env:RESEARCHRELAY_DB = '.runtime/browser-check.db'
 $env:RESEARCHRELAY_REPO = '.runtime/browser-check-record'
 mamba run -n researchrelay researchrelay serve --port 8767
-# In another terminal, with the service running:
+```
+
+In another terminal, with that fresh service running:
+
+```bash
 mamba run -n researchrelay python scripts/ui_smoke.py --url http://127.0.0.1:8767
 ```
 
-The browser script defaults to installed Microsoft Edge on Windows; pass `--browser` with a local Chrome/Chromium executable on another platform.
+The browser script defaults to Playwright-managed Chromium on all supported platforms. To use an existing browser, add `--browser` with its executable path, such as `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` on macOS or `"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` on Windows. Use a new database/repository name for each full browser-smoke run.
 
 Known limits: one project and one coordinator process; rule-based meeting extraction; local worker worktrees rather than security sandboxes; manual reconciliation for imported task scope changes; small-team static tokens rather than institutional SSO; no remote GitHub or Claude execution validated without a chosen project/session. Package installation supports the service and worker, while the bundled pilot expects the source checkout's `examples/` directory.
 

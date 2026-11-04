@@ -4,9 +4,9 @@ A working experiment for a small scientific team whose participant agents collab
 
 ## Start here
 
-Run from this checkout (`D:\ResearchRelay` on the development machine). Git and mamba must be installed.
+Git and mamba must be installed.
 
-The source is in [midatm1234/new](https://github.com/midatm1234/new). Clone it into the application directory with `git clone git@github.com:midatm1234/new.git ResearchRelay`.
+The source is in [midatm1234/new](https://github.com/midatm1234/ResearchRelay). Clone it into the application directory with `git clone git@github.com:midatm1234/new.git ResearchRelay`.
 
 ```powershell
 mamba env create -f environment.yml

@@ -22,7 +22,7 @@ class RepositoryConflict(RuntimeError):
 
 
 def _git(path: Path, *args: str, check: bool = True) -> str:
-    completed = subprocess.run(["git", "-C", str(path), *args], text=True,
+    completed = subprocess.run(["git", "-C", str(path), "-c", "core.longpaths=true", *args], text=True,
                                encoding="utf-8", capture_output=True, check=False, timeout=90)
     if check and completed.returncode:
         # Do not echo remote URLs or helper output that might contain credentials.
@@ -73,7 +73,7 @@ class Repository:
              "commit", "-m", message)
         return _git(path, "rev-parse", "HEAD")
 
-    def isolated_branch(self, task_id: str, attempt: int) -> dict:
+    def isolated_branch(self, task_id: str, attempt: int, base_ref: str = 'HEAD') -> dict:
         with self._lock:
             self.initialize()
             branch = f"tasks/{_safe(task_id)}/attempt-{int(attempt)}"
@@ -81,10 +81,11 @@ class Repository:
             if workspace.exists():
                 if _git(workspace, "branch", "--show-current") != branch:
                     raise RepositoryConflict("Existing task workspace points to a different branch")
+                base = _git(self.path, "rev-parse", base_ref)
                 return {"branch": branch, "workspace": str(workspace),
-                        "base_sha": _git(workspace, "merge-base", "HEAD", "main")}
+                        "base_sha": _git(workspace, "merge-base", "HEAD", base)}
             workspace.parent.mkdir(parents=True, exist_ok=True)
-            base = _git(self.path, "rev-parse", "HEAD")
+            base = _git(self.path, "rev-parse", base_ref)
             _git(self.path, "worktree", "add", "-b", branch, str(workspace), base)
             return {"branch": branch, "workspace": str(workspace), "base_sha": base}
 

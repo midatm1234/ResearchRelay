@@ -32,7 +32,8 @@ def main():
         server_url = f'http://127.0.0.1:{port}'
         environment = dict(os.environ, RESEARCHRELAY_MODE='demo', RESEARCHRELAY_PROJECT='forecast-pilot',
                            RESEARCHRELAY_TOKENS='{}', RESEARCHRELAY_DB=str(workspace/'state.db'),
-                           RESEARCHRELAY_REPO=str(workspace/'project record'))
+                           RESEARCHRELAY_REPO=str(workspace/'project record'),
+                           RESEARCHRELAY_GITHUB_URL='', RESEARCHRELAY_KNOWLEDGE_PATH='')
         with (workspace/'server.log').open('w+', encoding='utf-8') as log:
             server = subprocess.Popen([sys.executable, '-m', 'researchrelay.cli', 'serve', '--port', str(port)],
                                       cwd=workspace, env=environment, stdout=log, stderr=subprocess.STDOUT)

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from .artifacts import render_markdown, get_schema
 from .config import Settings
 from .engine import Engine, WorkflowError
+from .sync import ProjectSync, SyncError
 
 
 class Payload(BaseModel):
@@ -122,9 +123,30 @@ class RepositoryLink(Payload):
     detail: str = ''
 
 
+class SharedRepository(Payload):
+    url: str = Field(min_length=1,max_length=500)
+    branch: str = Field(min_length=1,max_length=200)
+    knowledge_path: str = Field(min_length=1,max_length=300)
+
+
+class KnowledgeChange(Payload):
+    path: str
+    content: str = Field(max_length=1_000_000)
+    expected_sha256: str | None = Field(default=None,pattern=r"^[0-9a-f]{64}$")
+
+
+class KnowledgePublication(Payload):
+    base_commit: str
+    changes: list[KnowledgeChange] = Field(min_length=1,max_length=30)
+    agent: str = Field(min_length=1,max_length=200)
+    request_id: str = Field(min_length=1,max_length=128)
+    message: str = Field(min_length=1,max_length=300)
+
+
 def create_app(settings: Settings | None = None, engine: Engine | None = None):
     settings = settings or Settings()
     coordinator = engine or Engine(settings.db_path,settings.project_id)
+    synchronizer = ProjectSync(settings,coordinator)
     pool = ThreadPoolExecutor(max_workers=1,thread_name_prefix='pilot')
 
     @asynccontextmanager
@@ -137,6 +159,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
                   description='One project per service. SQLite owns state; immutable Markdown artifacts travel between agents.')
     app.state.engine = coordinator
     app.state.settings = settings
+    app.state.project_sync = synchronizer
 
     @app.middleware('http')
     async def project_auth(request: Request, call_next):
@@ -156,6 +179,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'same-origin'
         return response
+
+    @app.exception_handler(SyncError)
+    async def sync_error(request,error):
+        return JSONResponse({'detail':str(error),'kind':error.kind,'paths':error.paths,
+                             'next_action':error.next_action,'sync':synchronizer.status()},status_code=error.status)
 
     @app.exception_handler(WorkflowError)
     async def workflow_error(request, error):
@@ -191,7 +219,41 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
     @app.get('/api/dashboard')
     def dashboard(request: Request,participant: str='human',since: int=0):
         identity = request.state.participant if settings.tokens else participant
-        return {**coordinator.dashboard(identity,since),'mode':settings.mode}
+        synchronizer.refresh()
+        return {**coordinator.dashboard(identity,since),'mode':settings.mode,'project':synchronizer.public(identity)}
+
+    @app.get('/api/project')
+    def project(request: Request):
+        synchronizer.refresh()
+        return synchronizer.public(request.state.participant)
+
+    @app.put('/api/project/repository')
+    def configure_shared_project(data: SharedRepository,request: Request):
+        human(request)
+        synchronizer.configure(**data.model_dump())
+        return synchronizer.public(request.state.participant)
+
+    @app.post('/api/project/sync')
+    def refresh_shared_project():
+        return synchronizer.refresh(force=True,require=bool(synchronizer.binding))
+
+    @app.get('/api/project/context')
+    def shared_context(request: Request):
+        return synchronizer.context(request.state.participant,force=True)
+
+    @app.post('/api/project/publish')
+    def publish_shared_knowledge(data: KnowledgePublication,request: Request):
+        if sum(len(change.content.encode("utf-8")) for change in data.changes)>2_000_000:
+            raise HTTPException(413,"Publish at most 2 MB of Markdown per request")
+        return synchronizer.publish(request.state.participant,**data.model_dump())
+
+    @app.get('/api/participants/me/agent')
+    def own_agent(request: Request):
+        return synchronizer.agent_profile(request.state.participant)
+
+    @app.put('/api/participants/me/agent')
+    def configure_own_agent(data: dict,request: Request):
+        return synchronizer.agent_profile(request.state.participant,data)
 
     @app.get('/api/tasks')
     def tasks(owner: str | None=None,ready: bool=False):
@@ -209,7 +271,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
     @app.post('/api/tasks/{task_id}/claim')
     def claim(task_id: str,data: Claim,request: Request):
         owner(request,task_id)
-        return coordinator.claim_task(task_id,**data.model_dump())
+        synchronizer.refresh(force=True,require=bool(synchronizer.binding))
+        task = coordinator.claim_task(task_id,**data.model_dump())
+        task['project_commit'] = synchronizer.status().get('latest_commit')
+        return task
 
     @app.post('/api/tasks/{task_id}/heartbeat')
     def heartbeat(task_id: str,data: Heartbeat,request: Request):
@@ -219,6 +284,16 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
     @app.post('/api/tasks/{task_id}/submit')
     def submit(task_id: str,data: Submission,request: Request):
         owner(request,task_id)
+        def previously_accepted():
+            with coordinator._tx() as db:
+                return db.execute("SELECT 1 FROM submissions WHERE task_id=? AND key=?",
+                                  (task_id,data.idempotency_key)).fetchone() is not None
+        try:
+            if not previously_accepted():
+                synchronizer.check_inputs(data.artifact.metadata)
+        except SyncError:
+            if not previously_accepted():
+                raise
         response = coordinator.submit_result(task_id,**data.model_dump())
         response['task'] = public_task(response['task'])
         return response

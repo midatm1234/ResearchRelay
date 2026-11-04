@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://researchrelay.local/schemas/knowledge/1.0",
+  "title": "ResearchRelay provisional publishing profile on selected OKF 0.2",
+  "type": "object",
+  "required": [
+    "id",
+    "project_id",
+    "schema_version",
+    "artifact_type",
+    "version",
+    "type",
+    "responsible_participant",
+    "producing_agent",
+    "created_at",
+    "updated_at",
+    "format_status",
+    "citations",
+    "relations",
+    "provenance",
+    "generated",
+    "sources"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "artifact_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "responsible_participant": {
+      "type": "string",
+      "minLength": 1
+    },
+    "producing_agent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "format_status": {
+      "const": "provisional"
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "object"
+        ]
+      }
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "generated": {
+      "type": "object",
+      "required": [
+        "by",
+        "at"
+      ],
+      "properties": {
+        "by": {
+          "type": "string",
+          "pattern": "^(?:human:[^\\s]+|process:[^\\s]+|[^\\s/]+/[^\\s]+)$"
+        },
+        "at": {
+          "type": "string"
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "resource"
+        ],
+        "properties": {
+          "resource": {
+            "type": "string",
+            "minLength": 1
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "stable",
+        "deprecated"
+      ]
+    },
+    "verified": {
+      "type": [
+        "array",
+        "object"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -45,7 +49,11 @@ jobs:
         run: python -m pip wheel --no-deps --wheel-dir .runtime/dist .
       - name: Service and scientific workflow smoke
         run: python scripts/smoke.py
+      - name: Shared literature handoff smoke
+        run: python -m researchrelay.cli literature-pilot --workspace .runtime/ci-literature
       - name: Install portable browser
         run: python -m playwright install chromium
       - name: Browser workflow smoke
         run: python scripts/smoke.py --browser
+      - name: Shared-project browser smoke
+        run: python scripts/ui_shared_smoke.py --local-git

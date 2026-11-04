@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import hashlib
+import httpx
 from pathlib import Path
 
 
@@ -16,14 +18,24 @@ def main(argv: list[str] | None = None) -> None:
     demo = commands.add_parser("demo", help="Run the credential-free local scientific pilot")
     demo.add_argument("--db", help="New SQLite file for an independent pilot")
     demo.add_argument("--repo", help="Local project record repository")
+    literature = commands.add_parser("literature-pilot",help="Run two participant agents against verified literature and a real Git remote")
+    literature.add_argument("--remote",help="Local bare remote, or explicit GitHub SSH/HTTPS URL with --live")
+    literature.add_argument("--branch",default="SRTD_DT_test")
+    literature.add_argument("--workspace",help="New empty workspace; defaults to .runtime/literature-pilot-<run>")
+    literature.add_argument("--live",action="store_true",help="Explicitly publish to the GitHub SRTD_DT_test branch")
     worker = commands.add_parser("worker", help="Run a participant-owned worker against the HTTP API")
     worker.add_argument("--server", default="http://127.0.0.1:8000")
     worker.add_argument("--participant", required=True)
     worker.add_argument("--repo", required=True, help="Participant's local project clone or empty directory")
-    worker.add_argument("--mode", choices=["claude", "manual"], default="claude")
+    worker.add_argument("--mode", choices=["claude", "manual"], help="Legacy explicit Claude/manual selection")
+    worker.add_argument("--provider", choices=['claude-cli','openai-responses','openai-compatible','command','manual'])
+    worker.add_argument("--model")
+    worker.add_argument("--base-url")
+    worker.add_argument("--api-key-env", help="Provider credential environment variable name; never its value")
+    worker.add_argument("--command-file", help="JSON array of argv strings for a participant-local agent")
     worker.add_argument("--once", action="store_true")
     worker.add_argument("--timeout", type=int, default=600)
-    worker.add_argument("--allowed-tools", default="Read,Write,Edit,Glob,Grep")
+    worker.add_argument("--allowed-tools", help="Override own profile Claude tools")
     worker.add_argument("--resubmit", help="Retry exact saved submission.json after a network interruption")
     worker.add_argument("--task", help="Task ID for --resubmit")
     for action in ("export", "import"):
@@ -41,7 +53,48 @@ def main(argv: list[str] | None = None) -> None:
     sync.add_argument("--repo")
     sync.add_argument("--db")
     sync.add_argument("--branch", default="main")
+    project = commands.add_parser('project',help='Retrieve synchronized project context and publish prepared Markdown')
+    project_commands = project.add_subparsers(dest='project_action',required=True)
+    for action in ('configure','context','sync','publish'):
+        action_parser = project_commands.add_parser(action)
+        action_parser.add_argument('--server',default='http://127.0.0.1:8000')
+        if action=='configure':
+            action_parser.add_argument('--url',required=True)
+            action_parser.add_argument('--branch',required=True)
+            action_parser.add_argument('--knowledge-path',required=True)
+        elif action=='context':
+            action_parser.add_argument('--output')
+        elif action=='publish':
+            action_parser.add_argument('--context',required=True,help='Saved exact project context JSON')
+            action_parser.add_argument('--file',required=True,help='Prepared structured Markdown')
+            action_parser.add_argument('--path',required=True,help='Repository-relative target below knowledge_path')
+            action_parser.add_argument('--agent',help='Producing agent; defaults to prepared artifact metadata')
+            action_parser.add_argument('--request-id',help='Stable idempotency key; otherwise derived from the exact draft/context')
+            action_parser.add_argument('--message',default='Record participant agent contribution')
+    agent = commands.add_parser("agent",help="Configure this authenticated participant's non-secret agent profile")
+    agent_commands = agent.add_subparsers(dest='agent_action',required=True)
+    for action in ('show','configure'):
+        action_parser = agent_commands.add_parser(action)
+        action_parser.add_argument('--server',default='http://127.0.0.1:8000')
+        if action=='configure':
+            action_parser.add_argument('--provider',required=True,choices=['claude-cli','openai-responses','openai-compatible','command','manual'])
+            action_parser.add_argument('--model')
+            action_parser.add_argument('--base-url')
+            action_parser.add_argument('--api-key-env')
+            action_parser.add_argument('--command-file')
+            action_parser.add_argument('--allowed-tools')
     args = parser.parse_args(argv)
+    if args.command in {'project','agent'}:
+        try:
+            outcome = _shared_command(args)
+        except (RuntimeError,ValueError,httpx.HTTPError) as error:
+            parser.exit(2,str(error)+'\n')
+        print(json.dumps(outcome,indent=2,default=str))
+        return
+    if args.command=="literature-pilot":
+        from .shared_pilot import run_shared_pilot
+        print(json.dumps(run_shared_pilot(args.remote,args.branch,args.workspace,args.live),indent=2))
+        return
     from .config import Settings
     settings = Settings()
     if args.command == "demo" and settings.mode != "demo":
@@ -55,7 +108,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "worker":
         from .worker import Worker
         adapter = Worker(args.server, args.participant, args.repo, token=os.getenv("RESEARCHRELAY_TOKEN"),
-                         mode=args.mode, timeout=args.timeout, allowed_tools=args.allowed_tools)
+                         mode=args.mode, timeout=args.timeout, allowed_tools=args.allowed_tools,
+                         provider=args.provider,model=args.model,base_url=args.base_url,api_key_env=args.api_key_env,
+                         command=_read_command(args.command_file))
         if args.resubmit:
             if not args.task:
                 parser.error("--resubmit requires --task")
@@ -81,6 +136,67 @@ def main(argv: list[str] | None = None) -> None:
         else:
             outcome = repo.import_artifacts(engine)
     print(json.dumps(outcome, indent=2, default=str))
+
+
+def _read_command(path):
+    if not path:
+        return None
+    command = json.loads(Path(path).expanduser().read_text(encoding='utf-8'))
+    if not isinstance(command,list) or any(not isinstance(part,str) for part in command):
+        raise ValueError('Command file must contain a JSON array of argument strings')
+    return command
+
+
+def _shared_command(args):
+    from .providers import validate_profile
+    headers = {'Authorization':'Bearer '+os.environ['RESEARCHRELAY_TOKEN']} if os.getenv('RESEARCHRELAY_TOKEN') else {}
+    with httpx.Client(base_url=args.server.rstrip('/')+'/api/',headers=headers,timeout=120,trust_env=False) as client:
+        def request(method,route,payload=None):
+            response = client.request(method,route,json=payload) if payload is not None else client.request(method,route)
+            if response.is_error:
+                try:
+                    detail = response.json()
+                except ValueError:
+                    detail = {}
+                message = f"ResearchRelay request failed (HTTP {response.status_code}): "+str(detail.get('detail','Check the project connection and participant permission.'))
+                if detail.get('paths'):
+                    message += ' Paths: '+', '.join(detail['paths'])+'.'
+                if detail.get('next_action'):
+                    message += ' Next: '+str(detail['next_action'])
+                raise RuntimeError(message)
+            return response.json()
+        if args.command=='agent':
+            if args.agent_action=='show':
+                return request('GET','participants/me/agent')
+            profile = {key:value for key,value in {'provider':args.provider,'model':args.model,'base_url':args.base_url,
+                       'api_key_env':args.api_key_env,'command':_read_command(args.command_file),
+                       'allowed_tools':args.allowed_tools}.items() if value is not None}
+            return request('PUT','participants/me/agent',validate_profile(profile))
+        if args.project_action=='configure':
+            return request('PUT','project/repository',{'url':args.url,'branch':args.branch,'knowledge_path':args.knowledge_path})
+        if args.project_action=='sync':
+            return request('POST','project/sync',{})
+        if args.project_action=='context':
+            context = request('GET','project/context')
+            if args.output:
+                Path(args.output).expanduser().write_text(json.dumps(context,indent=2),encoding='utf-8')
+            return context
+        context = json.loads(Path(args.context).expanduser().read_text(encoding='utf-8'))
+        base_commit = context.get('sync',{}).get('latest_commit')
+        if not base_commit:
+            raise ValueError('Saved context has no synchronized commit; configure a repository and retrieve context first')
+        content = Path(args.file).expanduser().read_text(encoding='utf-8')
+        from .knowledge import parse_knowledge, render_knowledge
+        metadata,body = parse_knowledge(content,project_id=context['project_id'],path=args.path)
+        if not metadata.get('reserved'):
+            content = render_knowledge(metadata,body)
+        agent = args.agent or metadata.get('producing_agent') or 'manual/'+str(context.get('participant','participant'))
+        previous = next((document for document in context.get('documents',[]) if document['path']==args.path),None)
+        changes = [{'path':args.path,'content':content,'expected_sha256':previous['sha256'] if previous else None}]
+        identity = [context.get('participant'),base_commit,changes,agent]
+        request_id = args.request_id or 'cli-'+hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest()[:32]
+        return request('POST','project/publish',{'base_commit':base_commit,'changes':changes,'agent':agent,
+                       'request_id':request_id,'message':args.message})
 
 
 if __name__ == "__main__":

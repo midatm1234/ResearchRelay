@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const state = { dashboard: null, filter: 'all', search: '', meeting: null, pollBusy: false,
-  seen: Number(localStorage.getItem('researchrelay:last-seen') || 0), pilotBusy: false };
+  seen: Number(localStorage.getItem('researchrelay:last-seen') || 0), pilotBusy: false, project: null, documents: [], contextCommit: null, knowledgeBusy: false, profile: null };
 let toastTimer;
 
 function node(tag, attrs = {}, children = []) {
@@ -61,11 +61,12 @@ async function api(path, method = 'GET', data) {
   if (data !== undefined) headers['Content-Type'] = 'application/json';
   const response = await fetch(`/api${path}`, { method, headers, body: data === undefined ? undefined : JSON.stringify(data) });
   if (!response.ok) {
-    let detail;
-    try { const body = await response.json(); detail = asText(body.detail || body.message || body); }
+    let detail, payload;
+    try { payload = await response.json(); detail = asText(payload.detail || payload.message || payload); }
     catch { detail = response.statusText; }
-    if (response.status === 401) throw new Error('A project access token is required. Select Access in the top bar.');
-    throw new Error(detail || `Request failed (${response.status})`);
+    const error = new Error(response.status === 401 ? 'A project access token is required. Select Access in the top bar.' : detail || `Request failed (${response.status})`);
+    error.status = response.status; error.payload = payload;
+    throw error;
   }
   const type = response.headers.get('content-type') || '';
   return type.includes('application/json') ? response.json() : response.text();
@@ -94,6 +95,7 @@ async function refresh(silent = false) {
     const data = await api(`/dashboard?participant=human&since=${state.seen}`);
     state.dashboard = data;
     render(data);
+    await refreshSharedProject(data);
     $('connection-status').textContent = 'All changes saved';
     if (!silent) notice('');
   } catch (error) {
@@ -144,6 +146,7 @@ function render(data) {
   const isDemo = ['demo', 'local demo', 'local_demo'].includes(localMode);
   $('pilot-button').hidden = !isDemo;
   clear(document.querySelector('.local-badge'), [node('span', { class: 'live-dot' }), isDemo ? 'LOCAL DEMO' : 'PROJECT SERVICE']);
+  if (state.project) renderSharedProject(state.project);
 }
 
 function renderDecisions(decisions) {
@@ -291,7 +294,7 @@ function reconciliationForm(task) {
   return section;
 }
 function reviewForm(task) {
-  const reviewer = node('input', { value: 'carol', required: 'required', 'aria-label': 'Reviewing participant' });
+  const reviewer = node('input', { value: state.project?.participant || 'carol', required: 'required', 'aria-label': 'Reviewing participant' });
   const verdict = node('select', { 'aria-label': 'Review verdict' }, [node('option', { value: 'approve', text: 'Approve computational result' }), node('option', { value: 'revise', text: 'Request a justified revision' })]);
   const rationale = node('textarea', { rows: 3, placeholder: 'Explain the evidence and methodological reason for this review…', required: 'required', 'aria-label': 'Review evidence and rationale' });
   const criteria = node('textarea', { rows: 3, value: lines(task.acceptance_criteria), 'aria-label': 'Acceptance criteria reviewed, one per line' });
@@ -366,7 +369,7 @@ document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('c
 document.querySelectorAll('.tab').forEach(button => button.addEventListener('click', () => { state.filter = button.dataset.filter; document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab === button)); renderTasks(); }));
 document.querySelectorAll('.sidebar a.nav-link').forEach(link => link.addEventListener('click', () => { document.querySelectorAll('.nav-link').forEach(item => item.classList.toggle('selected', item === link)); }));
 $('task-search').addEventListener('input', event => { state.search = event.target.value.trim().toLowerCase(); renderTasks(); });
-$('refresh-button').addEventListener('click', () => refresh());
+$('refresh-button').addEventListener('click', event => action(event.currentTarget, async () => { if (state.project?.repository) await retrieveSharedUpdates(); else await refresh(); }));
 $('mark-seen-button').addEventListener('click', () => { state.seen = latestSequence(state.dashboard || {}); localStorage.setItem('researchrelay:last-seen', String(state.seen)); render(state.dashboard || {}); toast('Project updates marked as read.'); });
 $('meeting-upload').addEventListener('change', async event => {
   const file = event.target.files?.[0];
@@ -428,3 +431,201 @@ document.querySelector('.topbar-right').append(accessButton);
 refresh();
 setInterval(() => refresh(true), 4000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(true); });
+
+
+function projectCommit(project = state.project) { return project?.sync?.latest_commit || project?.latest_commit || null; }
+function readableProject(project) { return project?.project_id === 'agentic-collaboration' ? 'Collaborative science with agentic AI' : cap((project?.project_id || '').replaceAll('-', ' ')); }
+function newRequestId() { return globalThis.crypto?.randomUUID ? crypto.randomUUID() : `publication-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+function field(label, input) { return node('div', { class: 'shared-field' }, [node('label', { text: label }), input]); }
+async function refreshSharedProject(dashboard) {
+  const project = dashboard.project || await api('/project');
+  const previousCommit = state.contextCommit;
+  state.project = project;
+  renderSharedProject(project);
+  if (project.repository && (!previousCommit || projectCommit(project) !== previousCommit) && !state.knowledgeBusy) await loadSharedContext();
+}
+function renderSharedProject(project) {
+  const repository = project.repository;
+  const sync = project.sync || {};
+  const status = sync.status || (repository ? 'waiting' : 'unconfigured');
+  $('sync-status').textContent = cap(status);
+  $('sync-status').className = `sync-status ${sync.error || /error|conflict|offline/.test(status) ? 'error' : repository ? 'configured' : ''}`;
+  $('participant-label').textContent = cap(project.participant || 'human');
+  $('configure-project-button').hidden = Boolean(project.participant && project.participant !== 'human');
+  $('sync-project-button').disabled = !repository;
+  $('knowledge-header').hidden = !repository;
+  if (!repository) {
+    clear($('sync-details'), [node('p', { text: 'No shared repository is configured. The local pilot is available; configure a repository to collaborate with other participants.' })]);
+    clear($('knowledge-list'));
+    state.documents = []; state.contextCommit = null;
+  } else {
+    const title = readableProject(project);
+    $('project-title').textContent = title;
+    $('project-label').textContent = title;
+    $('project-description').textContent = 'Shared evidence, attributed agent handoffs, and scientific decisions across participant environments.';
+    $('workspace-name').textContent = cap(project.project_id.replaceAll('-', ' '));
+    $('workspace-caption').textContent = repository.branch;
+    $('pilot-button').hidden = true;
+    clear(document.querySelector('.local-badge'), [node('span', { class: 'live-dot' }), 'SHARED PROJECT']);
+    const commit = projectCommit(project);
+    clear($('sync-details'), [node('div', { class: 'repository-reference' }, [node('span', { text: repository.url }), node('span', { class: 'status-badge', text: repository.branch })]), node('div', { class: 'sync-meta' }, [node('span', { text: commit ? `Latest retrieved commit: ${commit.slice(0, 12)}` : "No commit retrieved yet", title: commit || '' }), node('span', { text: sync.last_checked_at ? `Checked ${timeAgo(sync.last_checked_at)}` : 'No retrieval completed yet' }), node('span', { text: `Participant: ${project.participant || 'human'}` })])]);
+    const provisional = project.format_status === 'provisional' || state.documents.some(doc => doc.metadata?.format_status === 'provisional');
+    $('knowledge-format').textContent = provisional ? 'Selected OKF 0.2 · provisional ResearchRelay profile' : 'Portable Markdown / YAML';
+  }
+  const problem = sync.error || (/error|conflict|offline/.test(status) ? sync.message : '');
+  $('sync-error').hidden = !problem;
+  $('sync-error').textContent = problem ? `${asText(problem)}${sync.next_action ? ` Next: ${asText(sync.next_action)}` : ''}` : '';
+}
+async function loadSharedContext() {
+  if (state.knowledgeBusy) return;
+  state.knowledgeBusy = true;
+  try {
+    const context = await api('/project/context');
+    state.project = context;
+    state.documents = context.documents || [];
+    state.contextCommit = projectCommit(context);
+    renderSharedProject(context);
+    renderSharedKnowledge();
+    return context;
+  } finally { state.knowledgeBusy = false; }
+}
+function renderSharedKnowledge() {
+  if (!state.project?.repository) { clear($('knowledge-list')); return; }
+  if (!state.documents.length) { clear($('knowledge-list'), [node('p', { class: 'knowledge-empty', text: 'No Markdown knowledge artifacts were retrieved from the configured project directory.' })]); return; }
+  const documents = [...state.documents].sort((a, b) => a.path.localeCompare(b.path));
+  clear($('knowledge-list'), documents.map(doc => {
+    const meta = doc.metadata || {};
+    return node('article', { class: 'knowledge-row' }, [node('div', { class: 'knowledge-row-main' }, [node('button', { class: 'knowledge-title', text: meta.title || meta.objective || meta.id || doc.path, onclick: () => showKnowledge(doc) }), node('small', { text: `${doc.path} · ${meta.artifact_type || 'Markdown'} · ${meta.responsible_participant || 'unattributed'} / ${meta.producing_agent || 'unknown agent'}${meta.version ? ` · v${meta.version}` : ''}` })]), node('button', { class: 'text-button', text: 'Read ↗', 'aria-label': `Read ${doc.path}`, onclick: () => showKnowledge(doc) })]);
+  }));
+}
+async function retrieveSharedUpdates() {
+  await api('/project/sync', 'POST', {});
+  await loadSharedContext();
+  await refresh(true);
+  toast('Latest committed project information retrieved.');
+}
+function showKnowledge(doc) {
+  const meta = doc.metadata || {};
+  openDetail(meta.title || meta.objective || meta.id || doc.path, `SHARED KNOWLEDGE · ${doc.path}`, [node('div', { class: 'detail-meta' }, [node('span', { class: 'status-badge', text: meta.format_status === 'provisional' ? 'Provisional format' : 'Portable Markdown' }), node('span', { class: 'status-badge', text: `v${meta.version || 1}` })]), detailField('Responsible participant / producing agent', `${meta.responsible_participant || 'Unknown'} / ${meta.producing_agent || 'Unknown'}`), detailField('Retrieved commit', doc.commit || state.contextCommit), detailField('Citations', meta.citations), node('pre', { class: 'artifact-source knowledge-source', text: doc.content }), node('div', { class: 'detail-buttons' }, [node('button', { class: 'button secondary', text: 'Edit and publish a revision', onclick: () => editSharedDocument(doc) }), node('button', { class: 'button secondary', text: 'New review or extension', onclick: () => editSharedDocument(null, doc) })])]);
+}
+function setFrontMatterValue(content, key, value) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return content;
+  const line = `${key}: ${typeof value === 'number' ? value : JSON.stringify(value)}`;
+  const expression = new RegExp(`^${key}:.*$`, 'm');
+  const front = expression.test(match[1]) ? match[1].replace(expression, line) : `${match[1]}\n${line}`;
+  return `---\n${front}\n---\n${content.slice(match[0].length)}`;
+}
+function setGeneratedRecord(content, agent) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (!match) return content;
+  const value = agent === 'manual' ? `human:${state.project?.participant || 'human'}` : /^(human:|process:)|\//.test(agent) ? agent : `${agent.replace(/\s/g, '-')}/unspecified`;
+  const line = `generated:\n  by: ${JSON.stringify(value)}\n  at: ${JSON.stringify(new Date().toISOString())}`;
+  const expression = /^generated:.*(?:\r?\n[ \t]+.*)*/m;
+  const front = expression.test(match[1]) ? match[1].replace(expression, line) : `${match[1]}\n${line}`;
+  return `---\n${front}\n---\n${content.slice(match[0].length)}`;
+}
+function sharedTemplate(parent) {
+  const participant = state.project?.participant || 'human';
+  const producingAgent = 'manual';
+  const id = `contribution-${Date.now().toString(36)}`;
+  const stamp = new Date().toISOString();
+  const relations = parent?.metadata?.id ? `\n  - type: extends\n    target: ${JSON.stringify(parent.metadata.id)}` : ' []';
+  const content = `---\nid: ${id}\nproject_id: ${JSON.stringify(state.project.project_id)}\nschema_version: '1.0'\nartifact_type: synthesis\ntype: 'Research Synthesis'\nversion: 1\ntitle: 'Participant contribution'\nresponsible_participant: ${JSON.stringify(participant)}\nproducing_agent: ${JSON.stringify(producingAgent)}\ncreated_at: '${stamp}'\nupdated_at: '${stamp}'\nformat_status: provisional\ngenerated:\n  by: ${JSON.stringify('human:' + participant)}\n  at: '${stamp}'\nsources: []\ncitations: []\nrelations:${relations}\nprovenance:\n  method: participant-authored\n  input_commit: ${JSON.stringify(state.contextCommit || '')}\n---\n\n# Contribution\n\n## Finding and evidence\n\nRecord verified evidence and source URLs here.\n\n## Limitations\n\nExplain uncertainty and what was not verified.\n\n## Implications and next actions\n\nDescribe what another participant or agent should do next.\n`;
+  return { path: `${state.project.repository.knowledge_path}/${id}.md`, content, agent: producingAgent };
+}
+function editSharedDocument(document, parent) {
+  if (!state.contextCommit) { toast('Retrieve the project before preparing a contribution.', true); return; }
+  const fresh = document ? { path: document.path, content: document.content, agent: 'manual' } : sharedTemplate(parent);
+  let baseCommit = document?.commit || state.contextCommit;
+  let expectedHash = document?.sha256 || null;
+  let requestId = newRequestId();
+  const path = node('input', { value: fresh.path, required: 'required', 'aria-label': 'Repository Markdown path' });
+  const producingAgent = node('input', { value: fresh.agent, required: 'required', 'aria-label': 'Producing agent attribution' });
+  const message = node('input', { value: document ? `Revise ${document.metadata?.id || document.path}` : 'Add a participant knowledge contribution', required: 'required', 'aria-label': 'Contribution commit message' });
+  const editor = node('textarea', { class: 'knowledge-editor', rows: 22, value: fresh.content, required: 'required', spellcheck: 'false', 'aria-label': 'Shared Markdown draft' });
+  if (document) {
+    editor.value = setFrontMatterValue(editor.value, 'version', Number(document.metadata?.version || 1) + 1);
+    editor.value = setFrontMatterValue(editor.value, 'updated_at', new Date().toISOString());
+    editor.value = setFrontMatterValue(editor.value, 'responsible_participant', state.project.participant || 'human');
+    editor.value = setFrontMatterValue(editor.value, 'producing_agent', producingAgent.value);
+    editor.value = setGeneratedRecord(editor.value, producingAgent.value);
+  }
+  producingAgent.addEventListener('change', () => { editor.value = setFrontMatterValue(editor.value, 'producing_agent', producingAgent.value.trim()); editor.value = setGeneratedRecord(editor.value, producingAgent.value.trim()); });
+  const pinned = node('p', { class: 'draft-pin', text: `Draft based on commit ${baseCommit.slice(0, 12)}. Incoming updates will not replace this draft.` });
+  const problem = node('div', { class: 'publish-problem', role: 'status', hidden: 'hidden' });
+  const comparison = node('section', { class: 'publish-comparison' });
+  const button = node('button', { type: 'submit', class: 'button primary', text: 'Publish contribution to GitHub' });
+  const compareButton = node('button', { type: 'button', class: 'button secondary', text: 'Retrieve latest for comparison', onclick: event => action(event.currentTarget, async () => {
+    const latest = await loadSharedContext();
+    if (!latest || !state.contextCommit || latest.sync?.error) throw new Error('Latest project information could not be retrieved. Resolve synchronization first.');
+    const reviewedCommit = projectCommit(latest);
+    const remote = state.documents.find(item => item.path === path.value.trim());
+    const accept = node('input', { type: 'checkbox', required: 'required', 'aria-label': 'I reconciled my draft with the latest committed file' });
+    const rebase = node('button', { type: 'button', class: 'button secondary', text: 'Use this reviewed base for my draft' });
+    rebase.disabled = true;
+    accept.addEventListener('change', () => { rebase.disabled = !accept.checked; });
+    rebase.addEventListener('click', () => {
+      baseCommit = reviewedCommit; expectedHash = remote?.sha256 || null; requestId = newRequestId();
+      pinned.textContent = `Draft explicitly reconciled with commit ${baseCommit.slice(0, 12)}. Your text was preserved.`;
+      problem.hidden = true; clear(comparison); toast('Reviewed base updated. Inspect your draft before publishing again.');
+    });
+    clear(comparison, [node('h3', { text: 'Latest committed version' }), node('p', { class: 'section-intro', text: remote ? `Compare this version with your draft above. Latest commit: ${state.contextCommit.slice(0, 12)}.` : 'This path does not currently exist. Confirm whether creating it is still appropriate.' }), node('pre', { class: 'artifact-source', text: remote?.content || '(File absent)' }), node('label', { class: 'reconciliation-confirm' }, [accept, 'I reconciled my draft with the latest committed file']), rebase]);
+  }) });
+  const form = node('form', { class: 'shared-publish-form', onsubmit: event => {
+    event.preventDefault();
+    action(button, async () => {
+      problem.hidden = true;
+      try {
+        const result = await api('/project/publish', 'POST', { base_commit: baseCommit, changes: [{ path: path.value.trim(), content: editor.value, expected_sha256: expectedHash }], agent: producingAgent.value.trim(), request_id: requestId, message: message.value.trim() });
+        $('detail-dialog').close(); toast(`Contribution published at ${(result.commit || '').slice(0, 12)}.`); await loadSharedContext(); await refresh(true);
+      } catch (error) {
+        problem.hidden = false;
+        problem.textContent = `${error.status === 409 ? 'Concurrent change detected. Your draft is preserved. ' : ''}${error.message}`;
+        if (error.payload?.next_action) problem.append(node('p', { text: error.payload.next_action }));
+        if (error.status === 409) problem.append(compareButton);
+      }
+    });
+  } }, [field('Repository Markdown path', path), field('Producing agent (attributed in the project record)', producingAgent), field('Commit message', message), pinned, node('p', { class: 'section-intro', text: 'Prefer a new review or extension when contributing to someone else’s finding. Preserve citations and provenance, and update metadata to identify your contribution. Use manual for text you write here; name an AI agent only if it actually produced the contribution. Publication follows repository permissions and never force-pushes.' }), field('Portable Markdown with YAML metadata', editor), problem, comparison, node('div', { class: 'detail-buttons' }, [button])]);
+  openDetail(document ? 'Revise a shared artifact' : 'Publish a shared contribution', 'EXPLICIT ATTRIBUTION · CONCURRENT CHANGES CHECKED', [form]);
+}
+async function showAgentProfile() {
+  const result = await api('/participants/me/agent');
+  const profile = result.profile || result;
+  state.profile = profile;
+  const provider = node('select', { 'aria-label': 'Preferred agent connection' }, [['claude-cli','Claude CLI'],['openai-responses','GPT / OpenAI Responses API'],['openai-compatible','OpenAI-compatible API or local model'],['command','Local command adapter'],['manual','Manual / external agent handoff']].map(([value,label]) => node('option', { value, text: label })));
+  provider.value = profile.provider || 'claude-cli';
+  const model = node('input', { value: profile.model || '', placeholder: 'Your supported model ID', 'aria-label': 'Agent model ID' });
+  const baseURL = node('input', { value: profile.base_url || '', type: 'url', placeholder: 'Provider default, or your compatible endpoint', 'aria-label': 'Agent API base URL' });
+  const keyName = node('input', { value: profile.api_key_env || (profile.provider === 'openai-responses' ? 'OPENAI_API_KEY' : ''), placeholder: 'OPENAI_API_KEY when required', 'aria-label': 'Provider credential environment variable name' });
+  const command = node('textarea', { value: profile.command?.length ? JSON.stringify(profile.command) : '', rows: 2, placeholder: '["python", "my_agent.py"]', 'aria-label': 'Local command argv JSON' });
+  const tools = node('input', { value: profile.allowed_tools || 'Read,Write,Edit,Glob,Grep', 'aria-label': 'Claude allowed tools' });
+  const button = node('button', { class: 'button primary', type: 'submit', text: 'Save my agent connection' });
+  const form = node('form', { class: 'agent-profile-form', onsubmit: event => {
+    event.preventDefault();
+    action(button, async () => {
+      const payload = { provider: provider.value };
+      for (const [key,input] of [['model',model],['base_url',baseURL],['api_key_env',keyName],['allowed_tools',tools]]) if (input.value.trim()) payload[key] = input.value.trim();
+      if (command.value.trim()) { payload.command = JSON.parse(command.value); if (!Array.isArray(payload.command) || payload.command.some(part => typeof part !== 'string')) throw new Error('The command must be a JSON array of string arguments.'); }
+      const saved = await api('/participants/me/agent','PUT',payload);
+      state.profile = saved.profile || saved; $('detail-dialog').close(); toast('Your agent profile is saved. Start your participant worker to execute tasks.');
+    });
+  } }, [node('p', { class: 'section-intro', text: `Profile for ${result.participant || state.project?.participant || 'human'}. Credentials stay in your own worker environment. A consumer chat subscription does not imply API access; configure API access and billing separately where required.` }), field('Preferred agent connection',provider), field('Model ID (required for API providers)',model), field('API endpoint (optional)',baseURL), field('API key environment variable name — never enter the key itself',keyName), field('Command adapter argv (executed only by your local worker)',command), field('Claude CLI allowed tools',tools), node('p', { class: 'section-intro', text: 'This service stores connection metadata only. It does not execute the command or read your provider key. Run researchrelay worker --participant YOUR_NAME --repo YOUR_CLONE to retrieve current context, claim work, and submit a validated result.' }), button]);
+  openDetail('My agent connection', 'PARTICIPANT-OWNED TOOLS AND CREDENTIALS', [form]);
+}
+function configureSharedRepository() {
+  const repository = state.project?.repository || {};
+  const url = node('input', { value: repository.url || 'git@github.com:midatm1234/ResearchRelay.git', required: 'required', 'aria-label': 'Shared GitHub repository URL' });
+  const branch = node('input', { value: repository.branch || 'SRTD_DT_test', required: 'required', 'aria-label': 'Shared repository branch' });
+  const path = node('input', { value: repository.knowledge_path || `projects/${state.project?.project_id || 'agentic-collaboration'}`, required: 'required', 'aria-label': 'Project knowledge directory' });
+  const button = node('button', { class: 'button primary', type: 'submit', text: 'Connect shared repository' });
+  const form = node('form', { class: 'repository-config-form', onsubmit: event => {
+    event.preventDefault();
+    action(button, async () => { await api('/project/repository','PUT',{url:url.value.trim(),branch:branch.value.trim(),knowledge_path:path.value.trim()}); $('detail-dialog').close(); state.contextCommit = null; await loadSharedContext(); await refresh(true); toast('Shared repository configured and current information retrieved.'); });
+  } }, [node('p', { class: 'section-intro', text: `This service coordinates project ${state.project?.project_id || ''}. Its Git credentials must have permission for the repository. Use a shared working branch that follows your repository’s review policy. Configure project identity and participant tokens on the service host.` }), field('Repository URL',url),field('Branch',branch),field('Knowledge directory inside the repository',path),button]);
+  openDetail('Connect a GitHub project', 'COORDINATOR CONFIGURATION', [form]);
+}
+$('sync-project-button').addEventListener('click', event => action(event.currentTarget,retrieveSharedUpdates));
+$('configure-project-button').addEventListener('click',configureSharedRepository);
+$('agent-profile-button').addEventListener('click', event => action(event.currentTarget,showAgentProfile));
+$('new-contribution-button').addEventListener('click', () => editSharedDocument(null));

@@ -17,7 +17,7 @@ mamba run -n researchrelay researchrelay serve --port 8000
 
 Run service, demo, and test commands from the checkout directory. Open **http://127.0.0.1:8000**, then choose **Run local pilot**. The browser can close while the service and workers continue. Stop the service with Ctrl+C. Existing users can skip cloning and environment creation.
 
-To evaluate these changes before they merge into `main`, run `git switch dev/agent-collaboration-mvp` after cloning and before installing the environment.
+To evaluate these changes before they merge into `main`, run `git switch SRTD_DT_test` after cloning and before installing the environment.
 
 To run the same demonstration from another terminal against the dashboard's default database:
 
@@ -156,6 +156,101 @@ This is **local demonstration mode**: deterministic agents, real scientific calc
 
 The bootstrap uses independent resampling of a very small synthetic daily sample. It illustrates a reviewable workflow; it does not support a scientific generalization or a productivity claim.
 
+## Shared GitHub projects and participant agents
+
+ResearchRelay coordinates one project per service/database, with multiple authenticated participants and participant-owned workers. GitHub preserves committed project knowledge; SQLite remains authoritative for task claims, attempts, reviews, and execution state. Browser polling retrieves other participants' changes without requiring an always-open browser or a messaging service.
+
+### Configure the literature-review project
+
+The initial review is in [projects/agentic-collaboration](projects/agentic-collaboration), on branch `SRTD_DT_test`. It covers human–agent collaboration, multi-agent coordination, asynchronous handoffs, shared memory, and scientific provenance. Its search log records the date, queries, source selection, and verification limits; source notes distinguish published research, preprints, and software documentation.
+
+Create a separate `.env`/runtime database for this project, preserving any forecast-pilot database:
+
+```dotenv
+RESEARCHRELAY_PROJECT=agentic-collaboration
+RESEARCHRELAY_DB=.runtime/literature/state.db
+RESEARCHRELAY_REPO=.runtime/literature/project-record
+RESEARCHRELAY_MODE=live
+RESEARCHRELAY_GITHUB_URL=git@github.com:midatm1234/ResearchRelay.git
+RESEARCHRELAY_GITHUB_BRANCH=SRTD_DT_test
+RESEARCHRELAY_KNOWLEDGE_PATH=projects/agentic-collaboration
+RESEARCHRELAY_SYNC_INTERVAL=15
+RESEARCHRELAY_TOKENS={"replace-with-random-coordinator-token":"human","replace-with-random-alice-token":"alice","replace-with-random-bob-token":"bob"}
+```
+
+Replace the token placeholders before team use. The service host's Git identity must have read/write permission for the configured repository. Existing SSH authentication or a configured Git credential helper is used; credentials are not written to shared artifacts. Branch protection and repository permissions still apply. A rejected direct publication remains an actionable error; this service does not bypass protected branches or force-push.
+
+Start the service with the macOS/Windows commands above. Use **Access** in the dashboard to enter your participant token for that browser session. **Retrieve updates** forces a new fetch; **My agent** stores your non-secret connection profile. The shared knowledge panel shows the repository, branch, latest retrieved commit, synchronization errors, source notes, and attributed contributions.
+
+Alternatively, configure the binding through the coordinator API/CLI. In macOS/Linux zsh or bash:
+
+```bash
+export RESEARCHRELAY_TOKEN='your-coordinator-project-token'
+mamba run -n researchrelay researchrelay project configure --server http://127.0.0.1:8000 --url git@github.com:midatm1234/ResearchRelay.git --branch SRTD_DT_test --knowledge-path projects/agentic-collaboration
+mamba run -n researchrelay researchrelay project sync --server http://127.0.0.1:8000
+```
+
+In PowerShell, set the same token with `$env:RESEARCHRELAY_TOKEN = 'your-coordinator-project-token'`. Never put a real token in a Markdown artifact or a command argument.
+
+### Synchronization and conflict recovery
+
+Opening the project, refreshing it, and starting a task retrieve committed context. The dashboard polls workflow state every four seconds; Git retrieval is bounded by `RESEARCHRELAY_SYNC_INTERVAL` (15 seconds by default), with explicit retrieval available anytime. Status includes the latest retrieved commit, last check, and a next action for authentication, connectivity, branch-policy, or conflict errors.
+
+Each publication names the commit and file hashes that the participant actually read. The service preserves unrelated concurrent contributions, rejects changes to a touched file when its expected version is stale, and uses a normal push. A race at push time cannot silently replace a teammate's commit. Browser drafts remain in the editor after a conflict: retrieve the latest version, compare the text, explicitly acknowledge reconciliation, then publish against the reviewed base. Prefer a new review/extension artifact when commenting on someone else's finding.
+
+Participant access tokens identify trusted writers within this project; this version does **not** implement per-user GitHub OAuth. Service-originated commits use the service Git principal and record the responsible participant and producing agent. A participant's local worker uses that participant's own clone, tools, provider credentials, and GitHub permissions for its isolated task branches. See [shared-project operations](docs/shared-projects.md).
+
+### Connect your preferred agent and complete a handoff
+
+Supported connections include installed Claude CLI, GPT through the OpenAI Responses API, an OpenAI-compatible API/local endpoint, an external command adapter, and a manual file handoff for other agents. Provider credentials remain in the participant's worker environment. A consumer chat subscription does not imply API access; obtain the provider's required API credentials and billing/access separately. The connection profile stores only model/endpoint names, an environment-variable **name**, and optional local command/tool settings.
+
+Example GPT participant setup in macOS/Linux:
+
+```bash
+export RESEARCHRELAY_TOKEN='your-alice-project-token'
+export OPENAI_API_KEY='your-own-provider-key'
+mamba run -n researchrelay researchrelay agent configure --server http://127.0.0.1:8000 --provider openai-responses --model YOUR_SUPPORTED_MODEL_ID --api-key-env OPENAI_API_KEY
+mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000 --participant alice --repo "$HOME/Projects/alice-project-clone" --once
+```
+
+For Claude, select `--provider claude-cli` in `agent configure` and authenticate the installed Claude CLI in that same environment. For another provider, use the compatible API or command/manual adapter as documented in [agent connections](docs/agents.md). API-based synthesis does not claim to have executed local scientific code; Claude/command workers use their explicitly authorized tools.
+
+The worker retrieves the latest shared context, claims an assigned ready task, reads pinned inputs, runs the configured connection, validates the result, and submits it for independent review. Its provenance records the retrieved project commit and document hashes. A subsequent participant can retrieve that contribution and publish a review or extension:
+
+```bash
+mamba run -n researchrelay researchrelay project context --server http://127.0.0.1:8000 --output context.json
+# Prepare a validated source note, review, or synthesis in finding.md.
+mamba run -n researchrelay researchrelay project publish --server http://127.0.0.1:8000 --context context.json --file finding.md --path projects/agentic-collaboration/participant-finding.md --agent YOUR_ACTUAL_AGENT --request-id unique-stable-publication-id --message 'Add a verified literature finding'
+```
+
+Then Bob uses his own project token and agent to retrieve a fresh context, inspect Alice's finding, and publish a related review/extension under a new path. Do not reuse Alice's saved context for Bob's update. The browser **New contribution** editor supports the same publication path and preserves drafts on stale edits. Complete setup and pilot commands are in [shared-project operations](docs/shared-projects.md) and [agent connections](docs/agents.md).
+
+### Run the two-participant literature pilot
+
+The reproducible pilot starts its own isolated coordination state and uses two participant-local **command agents** against the verified literature bundle. No model subscription, API key, external GitHub account, or separately running web service is needed for the default local run:
+
+```bash
+mamba run -n researchrelay researchrelay literature-pilot
+```
+
+Each run creates a new `.runtime/literature-pilot-<run>` workspace containing `summary.json`, SQLite state, participant workspaces, and a local bare Git remote. To select a location explicitly, use `--workspace .runtime/literature-session-1`; that directory must be new or empty so existing work is preserved.
+
+Alice's agent consumes verified source notes and publishes a finding. Bob retrieves Alice's committed update, independently reviews the result, executes the dependent extension task, and publishes a related artifact. Alice reviews Bob's result and retrieves his publication. The pilot also submits an intentionally stale update and requires a conflict response. The three task documents in the initial literature bundle remain **proposals**; importing or opening them never launches work. This pilot explicitly creates and approves its own isolated test scope, which is scripted authorization rather than a claim of human meeting consensus.
+
+An optional live transport run publishes to the explicitly authorized GitHub test branch:
+
+```bash
+mamba run -n researchrelay researchrelay literature-pilot --remote git@github.com:midatm1234/ResearchRelay.git --branch SRTD_DT_test --live
+```
+
+This command writes new, uniquely named artifacts under `projects/agentic-collaboration/pilot/` and the generated workflow record. It requires the invoking Git principal's repository access. It uses two application participant identities through **one service Git principal**; it does not demonstrate two separate GitHub accounts. Both command agents still run locally: a live GitHub transport run is **not live Claude/GPT inference**. Check the emitted summary's `github_transport_live`, `model_inference_live`, commit hashes, artifact paths, and stale-edit status instead of inferring which integrations ran.
+
+Selected project context is bounded to **1,000 Markdown documents**, **1,000,000 UTF-8 bytes per document**, and **50,000,000 bytes in total**. Publication requests contain at most **30 documents** and **2,000,000 UTF-8 content bytes**. Keep large data/model outputs in external storage and publish versioned references. Direct publication uses a normal push; protected-branch rejection requires your configured PR/review path, such as the existing `researchrelay publish` CLI, and is never bypassed.
+
+### Open Knowledge Format status
+
+The repository previously had no binding to a particular Open Knowledge Format. This experiment selects [GoogleCloudPlatform/open-knowledge-format, specification 0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format) as a documented assumption. The ResearchRelay workflow profile remains **provisional**, not a full conformance certification. Its Markdown includes portable YAML metadata, attribution, generated/provenance fields, source-keyed citations, and relationships. See [format selection and validation boundaries](docs/open-knowledge-format.md) before adding new artifact types. Task execution snapshots generated into the shared record remain derived views of SQLite, not an alternative task scheduler.
+
 ## Architecture and assumptions
 
 ```mermaid
@@ -261,7 +356,7 @@ Suggested session: paste or inspect the supplied notes, correct proposed scope, 
 mamba run -n researchrelay python -m pytest -q
 ```
 
-Tests cover the scientific pilot and Git history, interrupted execution and claim fencing, competing claims, duplicate and conflicting submissions, dependency gating and stale versions, review/revision bounds, artifact validation, cancellation, repository update conflicts, direct Git imports, and API project-token scope. See [verification report](docs/verification.md) for the actual run and browser-check results.
+Tests cover the scientific pilot and Git history, interrupted execution and claim fencing, competing claims, duplicate and conflicting submissions, dependency gating and stale versions, review/revision bounds, artifact validation, cancellation, repository update conflicts, direct Git imports, and API project-token scope. See [verification report](docs/verification.md) for the actual run and browser-check results. See the [shared-workflow verification report](docs/shared-workflow-verification.md) for literature, synchronization, provider, live-transport, and platform verification boundaries.
 
 The environment file installs the verified versions in `requirements.lock.txt`. Optional real-browser verification uses a fresh isolated service because it writes synthetic QA records:
 
@@ -295,6 +390,6 @@ mamba run -n researchrelay python scripts/ui_smoke.py --url http://127.0.0.1:876
 
 The browser script defaults to Playwright-managed Chromium on all supported platforms. To use an existing browser, add `--browser` with its executable path, such as `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` on macOS or `"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` on Windows. Use a new database/repository name for each full browser-smoke run.
 
-Known limits: one project and one coordinator process; rule-based meeting extraction; local worker worktrees rather than security sandboxes; manual reconciliation for imported task scope changes; small-team static tokens rather than institutional SSO; no remote GitHub or Claude execution validated without a chosen project/session. Package installation supports the service and worker, while the bundled pilot expects the source checkout's `examples/` directory.
+Known limits: one project and one coordinator process; rule-based meeting extraction; local worker worktrees rather than security sandboxes; manual reconciliation for imported task scope changes; small-team static tokens rather than institutional SSO; live model inference and distinct GitHub user credentials require a configured participant session; shared-Git transport verification is recorded separately. Package installation supports the service and worker, while the bundled pilot expects the source checkout's `examples/` directory.
 
 The most useful next step is a real two-participant session using Claude workers against a designated GitHub repository. Use the resulting clarification/review data to improve meeting extraction and task-scope editing before adding providers or orchestration complexity.

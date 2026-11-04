@@ -11,6 +11,8 @@ sources:
   resource: https://github.com/midatm1234/ResearchRelay/commit/cf95142ca465251311e7256b788cabbf491fdd7a
 - id: bob-publication
   resource: https://github.com/midatm1234/ResearchRelay/commit/b6b378ff170d68a681cd92255b222102ef390520
+- id: native-mac-ci
+  resource: https://github.com/midatm1234/ResearchRelay/actions/runs/41931908567
 provenance:
   run_id: df58611a
   github_transport_live: true
@@ -19,20 +21,28 @@ provenance:
   participant_identity: Two application users; one configured service Git principal
   human_reviewed: false
   stale_edit_http_status: 409
+  previous_artifact_commit: 82c6ea88e8c117a5680309aa41b8b43c020ea2b7
+  separate_claude_probe:
+    attempts: 1
+    timeout_seconds: 90
+    status: blocked
+    validated_result: false
+    review: not_started
+    github_publication: false
 relations:
 - type: verifies
   target: ./alice-finding-df58611a.md
 - type: verifies
   target: ./bob-review-df58611a.md
 schema_version: '1.0'
-version: 1
+version: 2
 created_at: '2026-11-04T23:10:32.247238Z'
-updated_at: '2026-11-04T23:10:32.247238Z'
+updated_at: '2026-11-04T23:22:51.857656+00:00'
 format_status: provisional
 citations: []
 generated:
   by: codex-implementation/2026-11-04
-  at: '2026-11-04T23:10:32.247238Z'
+  at: '2026-11-04T23:22:51.857656+00:00'
 ---
 
 # Live literature handoff
@@ -62,3 +72,10 @@ Authentication, provider refusal/failure, remote race, and interrupted/repeated 
 
 [^alice-publication]: [Alice's publishing commit](https://github.com/midatm1234/ResearchRelay/commit/cf95142ca465251311e7256b788cabbf491fdd7a).
 [^bob-publication]: [Bob's publishing commit](https://github.com/midatm1234/ResearchRelay/commit/b6b378ff170d68a681cd92255b222102ef390520).
+
+## Platform verification
+
+After the integration fixes, [native macOS CI](https://github.com/midatm1234/ResearchRelay/actions/runs/41931908567) passed all 142 tests, package builds, service/scientific smoke, repeated literature handoffs, and browser checks on both Apple Silicon and Intel for implementation `82c6ea88e8c117a5680309aa41b8b43c020ea2b7`. Both literature smoke runs validated 46 published Markdown files with zero unresolved links. This is separate from the earlier live GitHub transport run and does not imply live provider inference or an interactive Miniforge/Safari test.
+## Separate Claude connection check
+
+The configured Claude CLI API-key helper was probed once through the actual worker on a minimal local-only task. It timed out at the 90-second execution limit, leaving the task blocked with no valid CLI JSON, accepted result, or peer review. The attempt was not retried and made no GitHub publication. No successful live Claude/GPT inference is claimed; the literature pilot above remains a command-agent transport demonstration. API/provider mock checks are separate.

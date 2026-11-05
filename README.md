@@ -6,7 +6,7 @@ A working experiment for a small scientific team whose participant agents collab
 
 Use Python 3.12 and Git 2.28 or newer. The web interface has no Node.js build step; SQLite is included with Python. [macOS setup](#macos-setup-apple-silicon-and-intel) below covers Apple Silicon and Intel.
 
-A new service uses **[midatm1234/ResearchRelay](https://github.com/midatm1234/ResearchRelay), branch `SRTD_DT_test`, directory `projects/agentic-collaboration`** as its shared knowledge base. The source-code checkout may be on `main`; the configured knowledge branch still determines what agents retrieve. Start from a source checkout:
+The default workspace at `/workspace` (also `/` before GitHub sign-in is configured) uses **[midatm1234/ResearchRelay](https://github.com/midatm1234/ResearchRelay), branch `SRTD_DT_test`, directory `projects/agentic-collaboration`** as its shared knowledge base. The source-code checkout may be on `main`; the configured knowledge branch still determines what agents retrieve. Start from a source checkout:
 
 ```bash
 git clone https://github.com/midatm1234/ResearchRelay.git
@@ -15,13 +15,71 @@ mamba env create -f environment.yml
 mamba run -n researchrelay researchrelay serve --port 8000
 ```
 
-Open **http://127.0.0.1:8000**. The dashboard retrieves committed project knowledge and shows the repository, branch, commit, and actionable synchronization errors. The service host needs SSH read permission for `git@github.com:midatm1234/ResearchRelay.git`; publication additionally needs write permission and is an explicit action. Starting or opening the service does not push changes. Each worker uses its participant's own Git access. To check read access:
+Open **http://127.0.0.1:8000/workspace** for the default dashboard. It retrieves committed project knowledge and shows the repository, branch, commit, and actionable synchronization errors. The service host needs SSH read permission for `git@github.com:midatm1234/ResearchRelay.git`; publication additionally needs write permission and is an explicit action. Starting or opening the service does not push changes. Each worker uses its participant's own Git access. To check read access:
 
 ```bash
 git ls-remote git@github.com:midatm1234/ResearchRelay.git refs/heads/SRTD_DT_test
 ```
 
-Run commands from the checkout. Copy `.env.example` to `.env` and configure distinct project tokens before team use. Use **Access** for your browser token and **My agent** for your connection. The coordinator may select a different repository/branch/directory for a personal or group project through **Configure repository** or the CLI below. A saved project binding takes precedence over startup defaults and is shared by its participants; this version has one active knowledge repository per service/database.
+Run commands from the checkout. The default workspace retains its existing token/SSH integration: copy `.env.example` to `.env` and configure distinct project tokens before sharing that workspace. Use **Access** for your browser token and **My agent** for your connection. The coordinator may select a different repository/branch/directory for a personal or group project through **Configure repository** or the CLI below. A saved project binding takes precedence over startup defaults and is shared by its participants; this default workspace has one active knowledge binding. The authenticated **Projects** hub below manages additional projects, each with its own execution database and binding.
+
+### Create or join a project
+
+Open **http://127.0.0.1:8000/projects**, or choose **Projects** / **New Project** in the dashboard. The hub uses each participant's own GitHub account; the original workspace remains available at `/workspace` as **Default workspace**. With OAuth configured or `--project-demo`, `/` opens the project hub.
+
+The service owner first registers a GitHub OAuth App with homepage `http://127.0.0.1:8000` and callback **`http://127.0.0.1:8000/api/hub/auth/callback`** for loopback development. Set the following in the server's private `.env`, replacing placeholders, then start the normal service:
+
+```dotenv
+RESEARCHRELAY_PUBLIC_URL=http://127.0.0.1:8000
+RESEARCHRELAY_GITHUB_CLIENT_ID=YOUR_OAUTH_APP_CLIENT_ID
+RESEARCHRELAY_GITHUB_CLIENT_SECRET=YOUR_SERVER_ONLY_OAUTH_APP_SECRET
+RESEARCHRELAY_HUB_PATH=.runtime/project-hub
+```
+
+For a deployed service use its HTTPS origin and matching OAuth callback. **Connect GitHub** completes sign-in; the browser receives an HTTPOnly session cookie rather than a token to paste. Missing configuration, expired authorization, repository access failures, and organization/branch policy errors remain visible. No machine-wide GitHub CLI account is silently substituted. See [GitHub authentication and permissions](docs/github-auth.md) for scope, encryption-key storage, session expiry, worker credentials, and deployment limits.
+
+Choose **New Project**, enter its name, description, research objectives, and collaborator usernames, then select a home:
+
+- **New repository:** create a separate repository in the selected account/organization. Visibility defaults to **Private**.
+- **New branch:** choose an accessible repository, its base branch, and a new project branch.
+- **Existing branch:** initialize a unique project folder in an existing branch. To join another participant's project, uncheck **Initialize a new project record** and enter its existing knowledge folder containing `PROJECT.md`.
+
+Collaborator names are a project record only. Before another participant joins or works, grant repository access in GitHub; ResearchRelay does not send invitations or elevate permissions automatically. Access is checked against the connected account's current GitHub permissions. Repository dropdowns offer additional pages when available.
+
+Initialization commits portable `README.md`, `AGENTS.md`, `PROJECT.md`, `TASKS.md`, `MEETINGS.md`, `KNOWLEDGE.md`, `DECISIONS.md`, and an index under the chosen project folder. It preserves existing content and branch policies. Objectives remain proposals: no task, meeting agreement, scientific finding, or approval is fabricated. Partial setup exposes its operation status and recovery action. Use **Check setup status → Resume setup** to reuse the original saved request after a restart. A request that needs reconciliation must be inspected before retrying; the UI does not offer automatic resume for it. No recovery action deletes existing resources or changes the saved scope. An authenticated original actor may also resume using the API below, with their GitHub PAT read from the environment rather than a command argument:
+
+```bash
+mamba run -n researchrelay python -c 'import os,httpx; r=httpx.post("http://127.0.0.1:8000/api/hub/operations/REQUEST_ID/resume",headers={"Authorization":"Bearer "+os.environ["RESEARCHRELAY_TOKEN"]},timeout=120,trust_env=False); r.raise_for_status(); print(r.json()["operation"]["status"])'
+```
+
+Project cards **Open**, **Edit details**, **Refresh**, and show **Repository activity**. Metadata edits update the shared `PROJECT.md`. A second participant signs in, joins the same repository/branch/folder, and opens the same project. Its dashboard and task API live at `/projects/PROJECT_ID` and `/projects/PROJECT_ID/api`; each project has isolated workflow state, context pins, and browser catch-up state. Legacy default-workspace bearer tokens are never forwarded by the browser to these project routes. The default literature bundle stays in its original workspace; newly created projects start with an empty, explicitly proposed record.
+
+An agent worker uses its participant's own permitted GitHub PAT in `RESEARCHRELAY_TOKEN` and their actual GitHub login as `--participant`. Keep the value in a private environment or credential manager; it is an HTTP credential, separate from the worker clone's own Git authentication:
+
+```bash
+export RESEARCHRELAY_TOKEN='YOUR_OWN_REPOSITORY_PERMITTED_GITHUB_PAT'
+mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000/projects/PROJECT_ID --participant YOUR_GITHUB_LOGIN --repo "$HOME/Projects/my-agent-clone" --provider vscode --once --timeout 3600
+```
+
+The task must first be assigned and approved for that identity. Claude/API/command connections use the same scoped server URL and their own provider credentials. A consumer chat subscription does not grant GitHub or provider API access.
+
+To evaluate project creation without GitHub credentials:
+
+```bash
+mamba run -n researchrelay researchrelay serve --project-demo --port 8000
+```
+
+Open **http://127.0.0.1:8000/projects** and choose **Continue as Alice**. Create a private repository/project, then use **Continue as Bob** to join its existing folder. This explicitly labeled mode simulates GitHub accounts/API responses with real local Git and HTTPOnly local sessions. It creates no GitHub resources and invokes no model or extension. It uses separate `.runtime/project-demo/` state and is distinct from the cached literature demonstration below.
+
+Browser verification (install `.[browser]` and Playwright Chromium first):
+
+```bash
+mamba run -n researchrelay python scripts/project_smoke.py
+mamba run -n researchrelay python scripts/ui_projects_smoke.py
+mamba run -n researchrelay python scripts/ui_projects_smoke.py --demo
+```
+
+The CLI smoke starts a disposable service, runs two participant-owned scripted command agents through task dependencies and independent reviews, publishes results with the real CLI, and rejects a stale edit. It uses supplied verified literature rather than fresh model inference. The browser script without flags uses mocked hub API contracts, including interrupted-request recovery and access failures. `--demo` starts its own temporary real HTTP service and local Git repositories and exercises all three modes, editing, activity, a second participant joining, and the scoped dashboard. Neither establishes live OAuth consent or GitHub resource creation.
 
 ### Credential-free offline demonstration
 
@@ -150,7 +208,7 @@ The offline **Run literature pilot** button and `researchrelay demo --offline` r
 
 ## Shared GitHub projects and participant agents
 
-ResearchRelay coordinates one project per service/database, with multiple authenticated participants and participant-owned workers. GitHub preserves committed project knowledge; SQLite remains authoritative for task claims, attempts, reviews, and execution state. Browser polling retrieves other participants' changes without requiring an always-open browser or a messaging service.
+Each ResearchRelay project has one authoritative execution database and knowledge binding, with multiple authenticated participants and participant-owned workers. The hub hosts several isolated projects in one service; the default workspace remains separate. GitHub preserves committed project knowledge; SQLite remains authoritative for task claims, attempts, reviews, and execution state. Browser polling retrieves other participants' changes without requiring an always-open browser or a messaging service.
 
 ### Use the default or choose another knowledge repository
 
@@ -272,7 +330,7 @@ flowchart LR
     I --> API
 ```
 
-- **One project per service/database.** Intended for a trusted small team and one service process, with SQLite WAL transactions fencing concurrent claims and submissions. This is not a multi-tenant hosted product.
+- **One execution database per project, one service process.** The project hub separates project catalogs, workflow databases, and repository bindings while SQLite WAL transactions fence concurrent claims and submissions. Institutional SSO, high availability, and large-scale hosting remain outside this experiment.
 - **Coordination is separate from execution.** The default service retrieves GitHub knowledge. FastAPI serves the dashboard and workflow API. Participant workers poll persistent tasks and run in their own environments. The explicit offline service's demo runner launches only the bundled literature-note workflow.
 - **SQLite owns execution state.** Tasks, attempts, leases, events, immutable artifact versions, submissions, review records, decisions, measures, and demo job status survive browser closure and restarts. No in-memory queue owns task work.
 - **Git preserves the project record.** Immutable artifact exports, task code/results, and derived dashboard snapshots are reviewable outside the application. Editing a snapshot does not change task state. Imported artifact changes become evidence; execution or scope changes still use explicit API operations.
@@ -340,7 +398,7 @@ The Claude invocation follows its [programmatic CLI interface](https://code.clau
 
 ## Team access and data
 
-The default server binds to loopback and rejects unauthenticated nonlocal API traffic. For team access, configure `RESEARCHRELAY_TOKENS` as a JSON mapping from random project tokens to participant names; `human` is the coordination role. Workers may claim and submit only their owner's tasks; review identity must match the token. All tokens belong to this single project. Use a private network and HTTPS reverse proxy for remote access. The dashboard accepts a session token without adding it to exported artifacts.
+The hub uses per-user GitHub sign-in and repository permissions as described above. The legacy default workspace binds to loopback and rejects unauthenticated nonlocal API traffic. When OAuth is enabled, this legacy API requires an explicit operator/project token even on loopback, so the managed GitHub cookie cannot expose its state. For its team access, configure `RESEARCHRELAY_TOKENS` as a JSON mapping from random project tokens to participant names; `human` is the coordination role. Workers may claim and submit only their owner's tasks; review identity must match the token. All tokens belong to this single project. Use a private network and HTTPS reverse proxy for remote access. The dashboard accepts a session token without adding it to exported artifacts.
 
 Git worktrees isolate filesystem changes and branches; they are **not an OS security sandbox**. Participants should use their own container/VM or restricted account for untrusted agent work. The system trusts participants' project access. Do not expose this pilot directly to the public internet.
 
@@ -359,6 +417,8 @@ Suggested offline session: paste or inspect the supplied notes, correct proposed
 ```powershell
 mamba run -n researchrelay python -m pytest -q
 ```
+
+The project hub adds OAuth/credential, initialization, concurrency/recovery, and two-user HTTP/local Git checks. [Project workflow verification](docs/project-workflow-verification.md) separates real transport from mocked GitHub authentication and resource operations. Native macOS (Apple Silicon/Intel), Windows, and Linux CI run the project workflows.
 
 Tests cover the scientific pilot and Git history, interrupted execution and claim fencing, competing claims, duplicate and conflicting submissions, dependency gating and stale versions, review/revision bounds, artifact validation, cancellation, repository update conflicts, direct Git imports, and API project-token scope. See [verification report](docs/verification.md) for the actual run and browser-check results. See the [shared-workflow verification report](docs/shared-workflow-verification.md) for literature, synchronization, provider, live-transport, and platform verification boundaries.
 
@@ -394,6 +454,6 @@ To retain screenshots from the managed service smoke, add `--screenshot .runtime
 
 The browser script defaults to Playwright-managed Chromium on all supported platforms. To use an existing browser, add `--browser` with its executable path, such as `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` on macOS or `"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` on Windows. Use a new database/repository name for each full browser-smoke run.
 
-Known limits: one project and one coordinator process; rule-based meeting extraction; local worker worktrees rather than security sandboxes; manual reconciliation for imported task scope changes; small-team static tokens rather than institutional SSO; live model inference and distinct GitHub user credentials require a configured participant session; shared-Git transport verification is recorded separately. Package installation supports the service and worker, while the bundled pilot expects the source checkout's `examples/` and `projects/agentic-collaboration/sources/` directories.
+Known limits: one coordinator process and an independent database per project; rule-based meeting extraction; local worker worktrees rather than security sandboxes; manual reconciliation for imported task scope changes; legacy workspace static tokens and managed-project GitHub OAuth rather than institutional SSO; live model inference and distinct GitHub user credentials require a configured participant session; shared-Git transport verification is recorded separately. Package installation supports the service and worker, while the bundled pilot expects the source checkout's `examples/` and `projects/agentic-collaboration/sources/` directories.
 
 The most useful next step is a real two-participant literature session using each scientist's signed-in editor agent or configured API/CLI worker. Record source corrections, handoff clarity, and human coordination time before making productivity claims.

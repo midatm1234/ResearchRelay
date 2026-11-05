@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -144,10 +144,10 @@ class KnowledgePublication(Payload):
     message: str = Field(min_length=1,max_length=300)
 
 
-def create_app(settings: Settings | None = None, engine: Engine | None = None):
+def create_app(settings: Settings | None = None, engine: Engine | None = None, *, include_hub=True, synchronizer=None):
     settings = settings or Settings()
     coordinator = engine or Engine(settings.db_path,settings.project_id)
-    synchronizer = ProjectSync(settings,coordinator)
+    synchronizer = synchronizer or ProjectSync(settings,coordinator)
     pool = ThreadPoolExecutor(max_workers=1,thread_name_prefix='pilot')
 
     @asynccontextmanager
@@ -155,17 +155,30 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
         coordinator.recover_jobs()
         yield
         pool.shutdown(wait=False,cancel_futures=True)
+        if include_hub and hasattr(app.state,'project_hub'):
+            for child in app.state.project_hub.apps.values():
+                child.state.pool.shutdown(wait=False,cancel_futures=True)
 
     app = FastAPI(title='ResearchRelay · Scientific Agent Coordination',version='0.1.0',lifespan=lifespan,
-                  description='One project per service. SQLite owns state; immutable Markdown artifacts travel between agents.')
+                  description='Isolated project coordinators with a GitHub project catalog. SQLite owns execution state; GitHub preserves shared research knowledge.')
+    app.state.pool = pool
     app.state.engine = coordinator
     app.state.settings = settings
     app.state.project_sync = synchronizer
 
     @app.middleware('http')
     async def project_auth(request: Request, call_next):
-        request.state.participant = 'human'
-        if request.url.path.startswith('/api') and request.url.path != '/api/health':
+        from .managed_context import managed_identity
+        current = managed_identity.get()
+        request.state.managed = current is not None
+        request.state.participant = current['identity'].login if current else 'human'
+        request.state.role = current.get('role') if current else None
+        if current:
+            if request.method not in {'GET','HEAD','OPTIONS'} and current['role'] not in {'write','admin'}:
+                return JSONResponse({'detail':'GitHub write access is required for this action.'},status_code=403)
+        elif request.url.path.startswith('/api/hub'):
+            pass  # Project hub routes enforce GitHub identities and permissions.
+        elif request.url.path.startswith('/api') and request.url.path != '/api/health':
             if settings.tokens:
                 bearer = request.headers.get('Authorization','')
                 token = bearer[7:] if bearer.startswith('Bearer ') else ''
@@ -174,6 +187,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
                 if not participant:
                     return JSONResponse({'detail':'Project bearer token required. Configure the session token in the dashboard.'},status_code=401)
                 request.state.participant = participant
+            elif settings.oauth_client_id and settings.oauth_client_secret:
+                return JSONResponse({'detail':'Use a GitHub-authenticated project from Projects. Legacy workspace API access requires an explicit project token.'},status_code=401)
             elif request.client and request.client.host not in {'127.0.0.1','::1','localhost','testclient'}:
                 return JSONResponse({'detail':'Unauthenticated demonstration is loopback only. Configure project tokens for team access.'},status_code=403)
         response = await call_next(request)
@@ -183,8 +198,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
 
     @app.exception_handler(SyncError)
     async def sync_error(request,error):
+        source = synchronizer
+        if request.url.path.startswith('/api/hub/projects/') and hasattr(app.state,'project_hub'):
+            child = app.state.project_hub.apps.get(request.path_params.get('project_id'))
+            if child is not None:
+                source = child.state.project_sync
         return JSONResponse({'detail':str(error),'kind':error.kind,'paths':error.paths,
-                             'next_action':error.next_action,'sync':synchronizer.status()},status_code=error.status)
+                             'next_action':error.next_action,'sync':source.status()},status_code=error.status)
 
     @app.exception_handler(WorkflowError)
     async def workflow_error(request, error):
@@ -201,12 +221,12 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
         return JSONResponse({'detail':str(error),'next_action':'Reconcile the retained Git branch or immutable artifact versions before retrying.'},status_code=409)
 
     def human(request):
-        if settings.tokens and request.state.participant != 'human':
+        if not request.state.managed and settings.tokens and request.state.participant != 'human':
             raise HTTPException(403,'Human coordinator token required to change approved scope or resolve scientific decisions')
 
     def owner(request,task_id):
         task = coordinator.get_task(task_id)
-        if settings.tokens and request.state.participant not in {'human',task['owner']}:
+        if (settings.tokens or request.state.managed) and request.state.participant not in ({task['owner']} if request.state.managed else {'human',task['owner']}):
             raise HTTPException(403,'This task belongs to a different participant')
         return task
 
@@ -219,7 +239,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
 
     @app.get('/api/dashboard')
     def dashboard(request: Request,participant: str='human',since: int=0):
-        identity = request.state.participant if settings.tokens else participant
+        identity = request.state.participant if settings.tokens or request.state.managed else participant
         synchronizer.refresh()
         return {**coordinator.dashboard(identity,since),'mode':settings.mode,'project':synchronizer.public(identity)}
 
@@ -319,7 +339,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
 
     @app.post('/api/tasks/{task_id}/reviews')
     def review(task_id: str,data: Review,request: Request):
-        if settings.tokens and request.state.participant != data.reviewer:
+        if (settings.tokens or request.state.managed) and request.state.participant != data.reviewer:
             raise HTTPException(403,'Reviewer must match authenticated participant')
         return coordinator.review_task(task_id,**data.model_dump())
 
@@ -345,13 +365,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
 
     @app.post('/api/artifacts',status_code=201)
     def put_artifact(data: Artifact,request: Request):
-        if settings.tokens:
+        if settings.tokens or request.state.managed:
             identity = request.state.participant
             metadata = data.metadata
             if identity != 'human':
                 if identity != metadata.get('responsible_participant'):
                     raise HTTPException(403,'Artifact responsibility must match participant')
-                if metadata.get('artifact_type') in {'task','meeting'}:
+                if not request.state.managed and metadata.get('artifact_type') in {'task','meeting'}:
                     raise HTTPException(403,'Human coordinator token required to publish scope records')
                 try:
                     previous = coordinator.get_artifact(metadata.get('id'))
@@ -377,14 +397,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
     @app.post('/api/meetings',status_code=201)
     def meeting(data: Meeting,request: Request):
         human(request)
-        if settings.tokens:
+        if settings.tokens or request.state.managed:
             data.participant = request.state.participant
         return coordinator.create_meeting(**data.model_dump())
 
     @app.post('/api/meetings/upload',status_code=201)
     async def upload(request: Request,file: UploadFile=File(...),participant: str=Form('human')):
         human(request)
-        if settings.tokens:
+        if settings.tokens or request.state.managed:
             participant = request.state.participant
         content = await file.read(200_001)
         if len(content)>200_000:
@@ -401,19 +421,21 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
         return coordinator.approve_meeting(meeting_id,[p.model_dump(exclude_none=True) for p in data.tasks])
 
     @app.post('/api/decisions')
-    def decision(data: DecisionRequest):
+    def decision(data: DecisionRequest,request: Request):
+        if request.state.managed:
+            data.participant = request.state.participant
         return coordinator.request_decision(**data.model_dump())
 
     @app.post('/api/decisions/{decision_id}/resolve')
     def resolve(decision_id: str,data: Resolution,request: Request):
         human(request)
-        if settings.tokens:
+        if settings.tokens or request.state.managed:
             data.participant = request.state.participant
         return coordinator.resolve_decision(decision_id,**data.model_dump())
 
     @app.post('/api/metrics',status_code=201)
     def metric(data: Metric,request: Request):
-        participant = request.state.participant if settings.tokens else data.participant
+        participant = request.state.participant if settings.tokens or request.state.managed else data.participant
         return coordinator.add_metric(participant,data.kind,data.value,data.note)
 
     def run_background_pilot():
@@ -453,11 +475,21 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
         from .repository import Repository
         return Repository(settings.repo_path).import_state(coordinator)
 
+    if include_hub:
+        from .hub_api import install_hub
+        install_hub(app,settings)
+
     static = Path(__file__).parent/'static'
     app.mount('/static',StaticFiles(directory=static,check_dir=False),name='static')
 
     @app.get('/',include_in_schema=False)
     def index():
+        if include_hub and (settings.project_demo or (settings.oauth_client_id and settings.oauth_client_secret)):
+            return RedirectResponse('/projects',status_code=307)
+        return FileResponse(static/'index.html')
+
+    @app.get('/workspace',include_in_schema=False)
+    def legacy_workspace():
         return FileResponse(static/'index.html')
 
     return app

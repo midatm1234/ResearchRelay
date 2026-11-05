@@ -59,3 +59,7 @@ jobs:
         run: python scripts/smoke.py --browser
       - name: Shared-project browser smoke
         run: python scripts/ui_shared_smoke.py --local-git
+      - name: Multi-project CLI and agent handoff smoke
+        run: python scripts/project_smoke.py
+      - name: Multi-project browser workflow smoke
+        run: python scripts/ui_projects_smoke.py --demo

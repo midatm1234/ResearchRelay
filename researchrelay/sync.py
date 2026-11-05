@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from .engine import WorkflowError, dumps
 from .knowledge import parse_knowledge, render_knowledge
 
-RECOGNIZABLE_CREDENTIAL = re.compile(r"(?:sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{24,}|-----BEGIN[^\r\n]*PRIVATE KEY-----)")
+RECOGNIZABLE_CREDENTIAL = re.compile(r"(?:sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{24,}|github_pat_[A-Za-z0-9_]{24,}|-----BEGIN[^\r\n]*PRIVATE KEY-----)")
 
 
 def timestamp():
@@ -116,9 +116,13 @@ class ProjectSync:
         digest = hashlib.sha256(dumps(binding).encode()).hexdigest()[:16]
         return self.root / (self.engine.project_id.replace(":","-")+"-"+digest)
 
-    def _git(self, path, *arguments, data=None, check=True):
-        environment = dict(os.environ,GIT_TERMINAL_PROMPT="0",GCM_INTERACTIVE="Never")
+    def _environment(self, base=None):
+        environment = dict(os.environ if base is None else base, GIT_TERMINAL_PROMPT="0",GCM_INTERACTIVE="Never")
         environment.setdefault("GIT_SSH_COMMAND","ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=yes")
+        return environment
+
+    def _git(self, path, *arguments, data=None, check=True):
+        environment = self._environment()
         try:
             completed = subprocess.run(["git","-C",str(path),"-c","core.longpaths=true",*arguments],input=data,
                 capture_output=True,env=environment,timeout=60)
@@ -166,7 +170,7 @@ class ProjectSync:
 
     def _run_local(self, arguments, **options):
         try:
-            return subprocess.run(arguments,capture_output=True,timeout=options.pop("timeout",30),**options)
+            return subprocess.run(arguments,capture_output=True,timeout=options.pop("timeout",30),env=self._environment(options.pop("env",None)),**options)
         except (OSError,subprocess.TimeoutExpired) as error:
             raise SyncError("A Git operation could not finish; the publication draft was retained.",503,kind="error",
                             next_action="Check Git/network access and retry the same request. A possibly accepted push is reconciled before retrying.") from error

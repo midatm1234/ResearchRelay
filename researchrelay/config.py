@@ -24,9 +24,16 @@ class Settings:
     knowledge_path: str | None = field(default_factory=lambda: os.getenv('RESEARCHRELAY_KNOWLEDGE_PATH') or None)
     sync_interval: float = field(default_factory=lambda: float(os.getenv('RESEARCHRELAY_SYNC_INTERVAL', '15')))
 
+    hub_path: Path | None = field(default_factory=lambda: Path(os.environ['RESEARCHRELAY_HUB_PATH']) if os.getenv('RESEARCHRELAY_HUB_PATH') else None)
+    project_demo: bool = field(default_factory=lambda: os.getenv('RESEARCHRELAY_PROJECT_DEMO', '').lower() in {'1','true'})
+    oauth_client_id: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_CLIENT_ID', ''))
+    oauth_client_secret: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_CLIENT_SECRET', ''), repr=False)
+    public_url: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_PUBLIC_URL', 'http://127.0.0.1:8000').rstrip('/'))
+
     def __post_init__(self):
         self.db_path = Path(self.db_path).expanduser()
         self.repo_path = Path(self.repo_path).expanduser()
+        self.hub_path = Path(self.hub_path).expanduser() if self.hub_path else self.db_path.parent / 'project-hub'
         if not 1 <= self.sync_interval <= 300:
             raise ValueError('RESEARCHRELAY_SYNC_INTERVAL must be between 1 and 300 seconds')
         if self.mode not in {'demo', 'live'}:

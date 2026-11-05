@@ -1,8 +1,11 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
+const managedProject = location.pathname.match(/^\/projects\/([^/]+)\/?$/)?.[1] || null;
+const apiBase = managedProject ? `/projects/${encodeURIComponent(decodeURIComponent(managedProject))}/api` : '/api';
+const seenKey = managedProject ? `researchrelay:project:${managedProject}:last-seen` : 'researchrelay:last-seen';
 const state = { dashboard: null, filter: 'all', search: '', meeting: null, pollBusy: false,
-  seen: Number(localStorage.getItem('researchrelay:last-seen') || 0), pilotBusy: false, project: null, documents: [], contextCommit: null, contextBinding: null, knowledgeContext: null, activeDraft: null, knowledgeBusy: false, profile: null };
+  seen: Number(localStorage.getItem(seenKey) || 0), pilotBusy: false, project: null, documents: [], contextCommit: null, contextBinding: null, knowledgeContext: null, activeDraft: null, knowledgeBusy: false, profile: null, managedInfo: null };
 let toastTimer;
 
 function node(tag, attrs = {}, children = []) {
@@ -56,15 +59,15 @@ function notice(message, error = false) {
 }
 async function api(path, method = 'GET', data) {
   const headers = { Accept: 'application/json' };
-  const token = sessionStorage.getItem('researchrelay:token');
+  const token = managedProject ? null : sessionStorage.getItem('researchrelay:token');
   if (token) headers.Authorization = `Bearer ${token}`;
   if (data !== undefined) headers['Content-Type'] = 'application/json';
-  const response = await fetch(`/api${path}`, { method, headers, body: data === undefined ? undefined : JSON.stringify(data) });
+  const response = await fetch(`${apiBase}${path}`, { method, credentials: 'same-origin', headers, body: data === undefined ? undefined : JSON.stringify(data) });
   if (!response.ok) {
     let detail, payload;
     try { payload = await response.json(); detail = asText(payload.detail || payload.message || payload); }
     catch { detail = response.statusText; }
-    const error = new Error(response.status === 401 ? 'A project access token is required. Select Access in the top bar.' : detail || `Request failed (${response.status})`);
+    const error = new Error(response.status === 401 ? (managedProject ? 'Sign in with GitHub from Projects to access this project.' : 'A project access token is required. Select Access in the top bar.') : detail || `Request failed (${response.status})`);
     error.status = response.status; error.payload = payload;
     throw error;
   }
@@ -371,7 +374,7 @@ document.querySelectorAll('.tab').forEach(button => button.addEventListener('cli
 document.querySelectorAll('.sidebar a.nav-link').forEach(link => link.addEventListener('click', () => { document.querySelectorAll('.nav-link').forEach(item => item.classList.toggle('selected', item === link)); }));
 $('task-search').addEventListener('input', event => { state.search = event.target.value.trim().toLowerCase(); renderTasks(); });
 $('refresh-button').addEventListener('click', event => action(event.currentTarget, async () => { if (state.project?.repository) await retrieveSharedUpdates(); else await refresh(); }));
-$('mark-seen-button').addEventListener('click', () => { state.seen = latestSequence(state.dashboard || {}); localStorage.setItem('researchrelay:last-seen', String(state.seen)); render(state.dashboard || {}); toast('Project updates marked as read.'); });
+$('mark-seen-button').addEventListener('click', () => { state.seen = latestSequence(state.dashboard || {}); localStorage.setItem(seenKey, String(state.seen)); render(state.dashboard || {}); toast('Project updates marked as read.'); });
 $('meeting-upload').addEventListener('change', async event => {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -423,19 +426,35 @@ $('assessment-form').addEventListener('submit', event => {
     $('coordination-time').value = ''; $('assessment-note').value = ''; toast('Pilot assessment recorded.'); await refresh(true);
   });
 });
-const accessButton = node('button', { class: 'text-button', text: 'Access', title: 'Configure a project-scoped access token for this browser session', onclick: () => {
+const accessButton = node('button', { class: 'text-button', text: managedProject ? 'Project account' : 'Access', title: managedProject ? 'View connected project access' : 'Configure a project-scoped access token for this browser session', onclick: () => {
+  if (managedProject) {
+    openDetail('Project account', 'YOUR CONNECTED GITHUB IDENTITY', [node('p', { class: 'section-intro', text: 'This project uses your server-managed GitHub sign-in and repository permissions. Open Projects to connect or change accounts. Legacy default-workspace tokens are not sent to this project.' }), node('a', { class: 'button primary', href: '/projects', text: 'Open Projects' })]);
+    return;
+  }
   const input = node('input', { type: 'password', autocomplete: 'off', placeholder: 'Project access token', value: sessionStorage.getItem('researchrelay:token') || '', 'aria-label': 'Project access token' });
   const button = node('button', { type: 'submit', class: 'button primary', text: 'Use for this browser session' });
   openDetail('Project access', 'OPTIONAL AUTHENTICATED SERVICE', [node('p', { class: 'section-intro', text: 'The local literature demonstration does not need a token. For a configured service, use your project-scoped token. It is held only in this browser session and sent to this service.' }), node('form', { onsubmit: event => { event.preventDefault(); const token = input.value.trim(); if (token) sessionStorage.setItem('researchrelay:token', token); else sessionStorage.removeItem('researchrelay:token'); $('detail-dialog').close(); refresh(); } }, [input, node('div', { class: 'detail-buttons' }, [button])])]);
 } });
 document.querySelector('.topbar-right').append(accessButton);
-refresh();
+async function startWorkspace() {
+  if (managedProject) {
+    document.querySelector('.brand').href = '/projects';
+    const schemaLink = document.querySelector('.sidebar-bottom>a');
+    schemaLink.href = `/projects/${managedProject}/openapi.json`; schemaLink.textContent = 'Project API schema ↗';
+    try {
+      const response = await fetch(`/api/hub/projects/${managedProject}`, {credentials:'same-origin'});
+      if (response.ok) {const result = await response.json(); state.managedInfo = result.project || result;}
+    } catch { /* The scoped API below reports connection and permission failures. */ }
+  }
+  await refresh();
+}
+startWorkspace();
 setInterval(() => refresh(true), 4000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(true); });
 
 
 function projectCommit(project = state.project) { return project?.sync?.latest_commit || project?.latest_commit || null; }
-function readableProject(project) { return project?.project_id === 'agentic-collaboration' ? 'Collaborative science with agentic AI' : cap((project?.project_id || '').replaceAll('-', ' ')); }
+function readableProject(project) { if (managedProject && state.managedInfo?.name) return state.managedInfo.name; return project?.project_id === 'agentic-collaboration' ? 'Collaborative science with agentic AI' : cap((project?.project_id || '').replaceAll('-', ' ')); }
 function newRequestId() { return globalThis.crypto?.randomUUID ? crypto.randomUUID() : `publication-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 function field(label, input) { return node('div', { class: 'shared-field' }, [node('label', { text: label }), input]); }
 function repositoryKey(project) {
@@ -462,7 +481,7 @@ function renderSharedProject(project) {
   $('sync-status').textContent = cap(status);
   $('sync-status').className = `sync-status ${sync.error || /error|conflict|offline/.test(status) ? 'error' : repository ? 'configured' : ''}`;
   $('participant-label').textContent = cap(project.participant || 'human');
-  $('configure-project-button').hidden = Boolean(project.participant && project.participant !== 'human');
+  $('configure-project-button').hidden = Boolean(managedProject || (project.participant && project.participant !== 'human'));
   $('sync-project-button').disabled = !repository;
   $('knowledge-header').hidden = !repository;
   if (!repository) {
@@ -475,7 +494,7 @@ function renderSharedProject(project) {
     const title = readableProject(project);
     $('project-title').textContent = title;
     $('project-label').textContent = title;
-    $('project-description').textContent = 'Shared evidence, attributed agent handoffs, and scientific decisions across participant environments.';
+    $('project-description').textContent = state.managedInfo?.description || 'Shared evidence, attributed agent handoffs, and scientific decisions across participant environments.';
     $('workspace-name').textContent = cap(project.project_id.replaceAll('-', ' '));
     $('workspace-caption').textContent = repository.branch;
     $('pilot-button').hidden = true;
@@ -651,7 +670,7 @@ async function showAgentProfile() {
       const saved = await api('/participants/me/agent','PUT',payload);
       state.profile = saved.profile || saved; $('detail-dialog').close(); toast('Your agent profile is saved. Start your participant worker to execute tasks.');
     });
-  } }, [node('p', { class: 'section-intro', text: `Profile for ${result.participant || state.project?.participant || 'human'}. Credentials stay in your own worker environment. A consumer chat subscription does not imply API access; configure API access and billing separately where required.` }), field('Preferred agent connection',provider), editorHelp, field('Model ID (required for API providers; optional editor label)',model), field('API endpoint (optional)',baseURL), field('API key environment variable name — never enter the key itself',keyName), field('Command adapter argv (executed only by your local worker)',command), field('Claude CLI allowed tools',tools), node('p', { class: 'section-intro', text: 'This service stores connection metadata only. It does not execute the command or read your provider key. Run researchrelay worker --participant YOUR_NAME --repo YOUR_CLONE to retrieve current context, claim work, and submit a validated result.' }), button]);
+  } }, [node('p', { class: 'section-intro', text: `Profile for ${result.participant || state.project?.participant || 'human'}. Credentials stay in your own worker environment. A consumer chat subscription does not imply API access; configure API access and billing separately where required.` }), field('Preferred agent connection',provider), editorHelp, field('Model ID (required for API providers; optional editor label)',model), field('API endpoint (optional)',baseURL), field('API key environment variable name — never enter the key itself',keyName), field('Command adapter argv (executed only by your local worker)',command), field('Claude CLI allowed tools',tools), node('p', { class: 'section-intro', text: managedProject ? `This service stores connection metadata only. In your own terminal, set RESEARCHRELAY_TOKEN to your repository-permitted GitHub PAT, then run researchrelay worker --server ${location.origin}/projects/${managedProject} --participant ${result.participant || 'YOUR_GITHUB_LOGIN'} --repo YOUR_CLONE. Your provider credentials and clone Git authentication stay in your own environment.` : 'This service stores connection metadata only. It does not execute the command or read your provider key. Run researchrelay worker --participant YOUR_NAME --repo YOUR_CLONE to retrieve current context, claim work, and submit a validated result.' }), button]);
   openDetail('My agent connection', 'PARTICIPANT-OWNED TOOLS AND CREDENTIALS', [form]);
 }
 function configureSharedRepository() {

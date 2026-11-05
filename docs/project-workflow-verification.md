@@ -12,7 +12,7 @@ Implementation branch: `feature/github-projects`. Verification date: 2026-11-05.
 - `python scripts/project_smoke.py`: passed using a real disposable HTTP service, real CLI, SQLite and local Git. Alice creates a project, Bob joins the same coordinator, supplied verified AutoGen evidence is published, two independently configured command workers run dependency-based tasks, other participants review their outputs, completion/result artifacts are published, Bob's follow-up is retrieved, and a stale same-file edit receives HTTP 409. Agents are scripted; no fresh search or model inference is claimed.
 - `python scripts/ui_projects_smoke.py`: passed 14 checks against mocked API responses, including unchanged-payload retry, durable resume, inaccessible repositories and missing OAuth configuration.
 - `python scripts/ui_projects_smoke.py --demo`: passed 10 checks against real HTTP/local Git. Exercises three creation modes, private visibility default, settings edits committed to Git, synchronization/activity, second participant joining, scoped dashboard and catch-up state, no legacy bearer forwarding, and 390px layout. Zero JavaScript errors.
-- Existing shared-workspace mocked browser regression: 15 checks passed.
+- Final shared-workspace browser checks: 16 mocked checks (including the deterministic refresh race) and 9 real HTTP/Git checks passed.
 - Dependency consistency (`python -m pip check`) and wheel build passed; hub Python modules and static assets were checked in the wheel.
 - Original synchronization regressions were rerun. An invented-commit validation regression caught during hardening was corrected and its targeted test passed.
 
@@ -33,6 +33,14 @@ python scripts/ui_projects_smoke.py --demo
 ```
 
 The standalone scripts own temporary state and stop only the service they start. `researchrelay serve --project-demo` is the persistent, loopback-only working-session variant; visit `/projects`. Simulated accounts and Git repositories are clearly labeled and kept under `.runtime/project-demo/`.
+
+## Regressions found by native CI
+
+The first Windows run used Git newline conversion and exposed differing SHA256 values between pilot worker files and the merged record. Demo-owned scientific source/code/record directories now commit nested byte-preservation policies. The full pilot/resume test runs with both `core.autocrlf=false` and `true`, verifies raw Git blobs and main-worktree bytes against declared source/code/config hashes, preserves user/global policies, and refuses conflicting existing nested policies before writing.
+
+All five pilot tests passed locally after this correction.
+
+A slow Intel browser run exposed an actual race when conflict comparison overlapped a background knowledge fetch. A deterministic withheld-response browser test reproduced the empty comparison before the fix. Polls now share in-flight reads; explicit comparison/refresh waits and retrieves fresh context afterward. The real-Git smoke asserts the stale HTTP 409, the subsequent exact context commit/blob, and the explicitly reviewed retry base/idempotency key. No timeout was increased or conflict assertion removed.
 
 ## Intel Mac dependency compatibility
 

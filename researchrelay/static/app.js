@@ -5,7 +5,7 @@ const managedProject = location.pathname.match(/^\/projects\/([^/]+)\/?$/)?.[1] 
 const apiBase = managedProject ? `/projects/${encodeURIComponent(decodeURIComponent(managedProject))}/api` : '/api';
 const seenKey = managedProject ? `researchrelay:project:${managedProject}:last-seen` : 'researchrelay:last-seen';
 const state = { dashboard: null, filter: 'all', search: '', meeting: null, pollBusy: false,
-  seen: Number(localStorage.getItem(seenKey) || 0), pilotBusy: false, project: null, documents: [], contextCommit: null, contextBinding: null, knowledgeContext: null, activeDraft: null, knowledgeBusy: false, profile: null, managedInfo: null };
+  seen: Number(localStorage.getItem(seenKey) || 0), pilotBusy: false, project: null, documents: [], contextCommit: null, contextBinding: null, knowledgeContext: null, activeDraft: null, knowledgeBusy: false, knowledgeRequest: null, profile: null, managedInfo: null };
 let toastTimer;
 
 function node(tag, attrs = {}, children = []) {
@@ -508,11 +508,17 @@ function renderSharedProject(project) {
   $('sync-error').hidden = !problem;
   $('sync-error').textContent = problem ? `${asText(problem)}${sync.next_action ? ` Next: ${asText(sync.next_action)}` : ''}` : '';
 }
-async function loadSharedContext() {
-  if (state.knowledgeBusy) return;
+function loadSharedContext({fresh = false} = {}) {
+  const pending = state.knowledgeRequest;
+  if (pending) {
+    // Polls may share a read. Explicit comparisons must read again after it,
+    // because the older request can predate the rejected publication.
+    if (!fresh) return pending;
+    return pending.catch(() => undefined).then(() => loadSharedContext({fresh: true}));
+  }
   state.knowledgeBusy = true;
   const requestedBinding = repositoryKey(state.project);
-  try {
+  const request = (async () => {
     const context = await api('/project/context');
     if (requestedBinding !== repositoryKey(state.project) && repositoryKey(context) !== repositoryKey(state.project)) throw new Error('The project knowledge source changed during retrieval. Retrieve updates again before continuing.');
     if (state.contextBinding && repositoryKey(context) !== state.contextBinding) discardKnowledgeContext(true);
@@ -524,7 +530,11 @@ async function loadSharedContext() {
     renderSharedProject(context);
     renderSharedKnowledge();
     return context;
-  } finally { state.knowledgeBusy = false; }
+  })();
+  state.knowledgeRequest = request;
+  return request.finally(() => {
+    if (state.knowledgeRequest === request) { state.knowledgeRequest = null; state.knowledgeBusy = false; }
+  });
 }
 function renderSharedKnowledge() {
   renderSourceCoverage();
@@ -538,7 +548,7 @@ function renderSharedKnowledge() {
 }
 async function retrieveSharedUpdates() {
   await api('/project/sync', 'POST', {});
-  await loadSharedContext();
+  await loadSharedContext({fresh: true});
   await refresh(true);
   toast('Latest committed project information retrieved.');
 }
@@ -608,7 +618,7 @@ function editSharedDocument(document, parent) {
     clear(comparison);
   };
   const compareButton = node('button', { type: 'button', class: 'button secondary', text: 'Retrieve latest for comparison', onclick: event => action(event.currentTarget, async () => {
-    const latest = await loadSharedContext();
+    const latest = await loadSharedContext({fresh: true});
     if (!latest || !state.contextCommit || latest.sync?.error) throw new Error('Latest project information could not be retrieved. Resolve synchronization first.');
     if (repositoryKey(latest) !== draftBinding) { markSourceChanged(); return; }
     const reviewedCommit = projectCommit(latest);
@@ -632,7 +642,7 @@ function editSharedDocument(document, parent) {
       problem.hidden = true;
       try {
         const result = await api('/project/publish', 'POST', { base_commit: baseCommit, expected_repository: expectedRepository, changes: [{ path: path.value.trim(), content: editor.value, expected_sha256: expectedHash }], agent: producingAgent.value.trim(), request_id: requestId, message: message.value.trim() });
-        $('detail-dialog').close(); toast(`Contribution published at ${(result.commit || '').slice(0, 12)}.`); await loadSharedContext(); await refresh(true);
+        $('detail-dialog').close(); toast(`Contribution published at ${(result.commit || '').slice(0, 12)}.`); await loadSharedContext({fresh: true}); await refresh(true);
       } catch (error) {
         problem.hidden = false;
         problem.textContent = `${error.status === 409 ? 'Concurrent change detected. Your draft is preserved. ' : ''}${error.message}`;
@@ -681,7 +691,7 @@ function configureSharedRepository() {
   const button = node('button', { class: 'button primary', type: 'submit', text: 'Connect shared repository' });
   const form = node('form', { class: 'repository-config-form', onsubmit: event => {
     event.preventDefault();
-    action(button, async () => { await api('/project/repository','PUT',{url:url.value.trim(),branch:branch.value.trim(),knowledge_path:path.value.trim()}); $('detail-dialog').close(); state.contextCommit = null; await loadSharedContext(); await refresh(true); toast('Shared repository configured and current information retrieved.'); });
+    action(button, async () => { await api('/project/repository','PUT',{url:url.value.trim(),branch:branch.value.trim(),knowledge_path:path.value.trim()}); $('detail-dialog').close(); state.contextCommit = null; await loadSharedContext({fresh: true}); await refresh(true); toast('Shared repository configured and current information retrieved.'); });
   } }, [node('p', { class: 'section-intro', text: `This service coordinates project ${state.project?.project_id || ''}. Its Git credentials must have permission for the repository. Use a shared working branch that follows your repository’s review policy. This knowledge source applies to every participant in the current project. Use a separate project for another person or group; only its coordinator should change this binding. Configure project identity and participant tokens on the service host.` }), field('Repository URL',url),field('Branch',branch),field('Knowledge directory inside the repository',path),button]);
   openDetail('Connect a GitHub project', 'COORDINATOR CONFIGURATION', [form]);
 }

@@ -99,8 +99,14 @@ def _hash(path: Path) -> str:
 
 
 def _seed(repo: Repository, checkout: Path) -> None:
-    files = {"analysis/source_inventory.py": INVENTORY_SCRIPT.encode("utf-8"),
-             "literature/groups.json": (json.dumps(SOURCE_GROUPS, indent=2)+"\n").encode("utf-8")}
+    # These namespaces belong to the demo record. Commit byte-preserving
+    # attributes before creating worker worktrees: provenance hashes must not
+    # depend on a participant's core.autocrlf or root-level text policy.
+    # Existing policies are handled by the same preserve-or-refuse seed check.
+    files = {directory+"/.gitattributes": b"* -text\n"
+             for directory in ("literature", "analysis", "task-records", "artifacts")}
+    files.update({"analysis/source_inventory.py": INVENTORY_SCRIPT.encode("utf-8"),
+                  "literature/groups.json": (json.dumps(SOURCE_GROUPS, indent=2)+"\n").encode("utf-8")})
     bundle = checkout / "projects/agentic-collaboration"
     for source in sorted(bundle.rglob("*.md")):
         relative = source.relative_to(bundle)

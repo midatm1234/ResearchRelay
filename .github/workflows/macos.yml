@@ -63,3 +63,5 @@ jobs:
         run: python scripts/project_smoke.py
       - name: Multi-project browser workflow smoke
         run: python scripts/ui_projects_smoke.py --demo
+      - name: Shared knowledge refresh race regression
+        run: python scripts/ui_shared_smoke.py

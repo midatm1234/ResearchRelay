@@ -182,8 +182,23 @@ def main():
             expect(page.locator('.publish-problem')).to_contain_text('Concurrent change detected')
             assert 'My preserved draft.' in draft.input_value()
             original_request=state['publications'][0]['request_id']
+            # An older background request is still in flight when comparison is requested.
+            # Its eventual response intentionally predates the teammate's update.
+            page.wait_for_function('!state.knowledgeBusy')
+            reads_before=state['context_reads']
+            state['hold_context']=True
+            with page.expect_request('**/api/project/context'):
+                page.evaluate('void loadSharedContext()')
             page.get_by_role('button',name='Retrieve latest for comparison').click()
+            assert 'My preserved draft.' in draft.input_value()
+            expect(page.locator('.publish-comparison')).to_be_empty()
+            state['hold_context']=False
+            stale_context={**project(),'sync':{**project()['sync'],'latest_commit':'a'*40},'documents':[
+                {**document,'content':original,'sha256':hashlib.sha256(original.encode()).hexdigest(),'commit':'a'*40}],
+                'tasks':[],'artifacts':[]}
+            state.pop('pending_context').fulfill(status=200,content_type='application/json',body=json.dumps(stale_context))
             expect(page.locator('.publish-comparison')).to_contain_text('Teammate concurrent extension.')
+            assert state['context_reads']>=reads_before+2, 'Comparison must retrieve fresh context after an older request finishes'
             rebase=page.get_by_role('button',name='Use this reviewed base for my draft')
             expect(rebase).to_be_disabled()
             draft.fill(draft.input_value()+'\nTeammate concurrent extension.\n')
@@ -237,7 +252,7 @@ def main():
             assert not errors,errors
             browser.close()
         print(json.dumps({'status':'passed','mode':'mocked-backend browser UI','checks':[
-            'repository commit and attribution','default shared source and preserved custom form binding','binding changes reload the same commit','shared knowledge excludes cached offline coverage','changed target clears context and preserves a fenced draft','publication pins observed repository','forced update retrieval','own profile metadata','unauthenticated local-provider profile','VS Code handoff metadata and instructions','stale publication draft preservation',
+            'repository commit and attribution','default shared source and preserved custom form binding','binding changes reload the same commit','shared knowledge excludes cached offline coverage','changed target clears context and preserves a fenced draft','publication pins observed repository','forced update retrieval','own profile metadata','unauthenticated local-provider profile','VS Code handoff metadata and instructions','stale publication draft preservation','comparison waits for a fresh context after background retrieval',
             'explicit reconciliation and normal retry','participant token switch','explicit offline vs unbound service labels','mobile layout'],'page_errors':errors}))
     finally:
         server.shutdown();server.server_close();thread.join(timeout=5)
@@ -298,12 +313,16 @@ def local_git_main():
                     page.locator('#agent-profile-button').click()
                     page.get_by_role('combobox',name='Preferred agent connection').select_option('openai-responses')
                     page.get_by_role('textbox',name='Agent model ID').fill('configured-ui-test-model')
-                    page.get_by_role('button',name='Save my agent connection').click()
+                    with page.expect_response(lambda response: urlparse(response.url).path=='/api/participants/me/agent' and response.request.method=='PUT') as saved_profile:
+                        page.get_by_role('button',name='Save my agent connection').click()
+                    assert saved_profile.value.status==200
                     expect(page.locator('#detail-dialog')).not_to_be_visible()
                     page.locator('.knowledge-title').filter(has_text='Shared evidence').click()
                     page.get_by_role('button',name='Edit and publish a revision').click()
                     draft=page.get_by_role('textbox',name='Shared Markdown draft')
                     draft.fill(draft.input_value()+'\nMy preserved UI draft.\n')
+                    original_commit=_git(seed,'rev-parse','HEAD')
+                    expect(page.locator('.draft-pin')).to_contain_text(original_commit[:12])
                     # A second clone commits after the first participant opened its editor.
                     changed=dict(metadata,version=2,responsible_participant='bob',producing_agent='ui-fixture-bob')
                     remote_body='# Shared evidence\n\nInitial synthetic finding.\n\nConcurrent Bob extension.\n'
@@ -311,16 +330,39 @@ def local_git_main():
                     _git(other,'add','--',relative)
                     _git(other,'-c','user.name=UI Bob','-c','user.email=fixture@localhost.invalid','commit','-m','Bob concurrent extension')
                     _git(other,'push','origin','SRTD_DT_test')
-                    page.get_by_role('button',name='Publish contribution to GitHub').click()
+                    bob_commit=_git(other,'rev-parse','HEAD')
+                    bob_blob=subprocess.check_output(['git','-C',str(other),'cat-file','blob',f'{bob_commit}:{relative}'])
+                    bob_hash=hashlib.sha256(bob_blob).hexdigest()
+                    with page.expect_response(lambda response: urlparse(response.url).path=='/api/project/publish' and response.request.method=='POST') as rejected:
+                        page.get_by_role('button',name='Publish contribution to GitHub').click()
+                    assert rejected.value.status==409,rejected.value.text()
+                    assert relative in rejected.value.json()['paths']
                     expect(page.locator('.publish-problem')).to_contain_text('Concurrent change detected',timeout=30_000)
                     assert 'My preserved UI draft.' in draft.input_value()
-                    page.get_by_role('button',name='Retrieve latest for comparison').click()
-                    expect(page.locator('.publish-comparison')).to_contain_text('Concurrent Bob extension.',timeout=30_000)
+                    # Wait for a newly requested context, not an unrelated older poll response.
+                    with page.expect_request(lambda request: urlparse(request.url).path=='/api/project/context' and request.method=='GET') as comparison_request:
+                        page.get_by_role('button',name='Retrieve latest for comparison').click()
+                    comparison_response=comparison_request.value.response()
+                    assert comparison_response is not None and comparison_response.status==200
+                    compared=comparison_response.json()
+                    assert compared['sync']['latest_commit']==bob_commit
+                    compared_file=next(item for item in compared['documents'] if item['path']==relative)
+                    assert compared_file['sha256']==bob_hash and 'Concurrent Bob extension.' in compared_file['content']
+                    expect(page.locator('.publish-comparison .artifact-source')).to_have_text(compared_file['content'],timeout=30_000)
+                    expect(page.locator('.draft-pin')).to_contain_text(original_commit[:12])
+                    expect(page.get_by_role('button',name='Use this reviewed base for my draft')).to_be_disabled()
                     draft.fill(draft.input_value().replace('version: 2','version: 3')+'\nConcurrent Bob extension.\n')
                     page.get_by_role('checkbox',name='I reconciled my draft with the latest committed file').check()
                     page.get_by_role('button',name='Use this reviewed base for my draft').click()
-                    page.get_by_role('button',name='Publish contribution to GitHub').click()
+                    with page.expect_response(lambda response: urlparse(response.url).path=='/api/project/publish' and response.request.method=='POST') as accepted:
+                        page.get_by_role('button',name='Publish contribution to GitHub').click()
+                    assert accepted.value.status==200,accepted.value.text()
+                    sent=accepted.value.request.post_data_json
+                    assert sent['base_commit']==bob_commit and sent['changes'][0]['expected_sha256']==bob_hash
+                    assert sent['request_id']!=rejected.value.request.post_data_json['request_id']
+                    published_commit=accepted.value.json()['commit']
                     expect(page.locator('#detail-dialog')).not_to_be_visible(timeout=30_000)
+                    page.wait_for_function('(commit)=>state.knowledgeContext?.sync?.latest_commit===commit && !state.knowledgeBusy',arg=published_commit,timeout=30_000)
                     _git(other,'fetch','origin','SRTD_DT_test')
                     committed=_git(other,'show',f'origin/SRTD_DT_test:{relative}')
                     assert 'My preserved UI draft.' in committed and 'Concurrent Bob extension.' in committed
@@ -343,7 +385,7 @@ def local_git_main():
                 time.sleep(1)  # Drain any already-started local Git retrieval before Windows shutdown.
                 print(json.dumps({'status':'passed','mode':'real service and local bare Git remote; no external model calls',
                                   'checks':['project retrieval','own profile metadata','concurrent clone update','stale draft retained',
-                                            'explicit merged reconciliation','normal Git publication','second participant retrieval','mobile layout'],
+                                            'exact rejected submission and fresh comparison commit/hash','explicit merged reconciliation','normal Git publication','second participant retrieval','mobile layout'],
                                   'page_errors':errors}))
             except BaseException:
                 log.flush();log.seek(0);print(log.read(),file=sys.stderr)

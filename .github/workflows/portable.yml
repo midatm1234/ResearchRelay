@@ -38,3 +38,5 @@ jobs:
         run: python -m playwright install --with-deps chromium
       - name: Multi-project browser
         run: python scripts/ui_projects_smoke.py --demo
+      - name: Shared knowledge refresh race regression
+        run: python scripts/ui_shared_smoke.py

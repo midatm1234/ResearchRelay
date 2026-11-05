@@ -1,10 +1,11 @@
 import hashlib
+import subprocess
 
 import pytest
 
 from researchrelay.engine import Engine, WorkflowError
 from researchrelay.pilot import TASK_IDS, run_pilot
-from researchrelay.repository import _git
+from researchrelay.repository import Repository, _git
 
 
 def assertions(engine, outcome):
@@ -33,9 +34,24 @@ def assertions(engine, outcome):
         assert {row["task_id"] for row in claims[:2]} == set(TASK_IDS[:2])
 
 
-def test_complete_pilot_and_idempotent_resume(tmp_path, monkeypatch):
+@pytest.mark.parametrize("autocrlf", [False, True], ids=["autocrlf-false", "autocrlf-true"])
+def test_complete_pilot_and_idempotent_resume(tmp_path, monkeypatch, autocrlf):
     engine = Engine(tmp_path / "state.db", "agentic-collaboration")
     repo = tmp_path / "record"
+    global_config = tmp_path / "isolated-global.gitconfig"
+    global_bytes = ("[core]\n\tautocrlf = "+str(autocrlf).lower()+"\n").encode()
+    global_config.write_bytes(global_bytes)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    user_attributes = None
+    if autocrlf:
+        # Exercise an existing user's policy as well as the Windows default.
+        repository = Repository(repo)
+        repository.initialize()
+        user_attributes = b"* text=auto eol=crlf\ncustom/** -diff\n"
+        (repo / ".gitattributes").write_bytes(user_attributes)
+        (repo / "user-notes.txt").write_bytes(b"Existing user research notes\n")
+        _git(repo, "add", "--", ".gitattributes", "user-notes.txt")
+        repository._commit(repo, "Preserve existing user newline policy and research notes")
     reads = []
     original_get = engine.get_artifact
     def tracked_get(artifact_id, version=None):
@@ -49,6 +65,15 @@ def test_complete_pilot_and_idempotent_resume(tmp_path, monkeypatch):
     result = engine.get_artifact("result-literature-synthesis", 2)
     for item in result["metadata"]["data"] + result["metadata"]["code"]:
         assert hashlib.sha256((repo / item["path"]).read_bytes()).hexdigest() == item["sha256"]
+        published = subprocess.check_output(["git", "-C", str(repo), "show", "HEAD:"+item["path"]])
+        assert hashlib.sha256(published).hexdigest() == item["sha256"]
+    groups = subprocess.check_output(["git", "-C", str(repo), "show", "HEAD:literature/groups.json"])
+    assert hashlib.sha256(groups).hexdigest() == result["metadata"]["configuration"]["groups_sha256"]
+    if user_attributes is not None:
+        assert (repo / ".gitattributes").read_bytes() == user_attributes
+        assert (repo / "user-notes.txt").read_bytes() == b"Existing user research notes\n"
+    assert global_config.read_bytes() == global_bytes
+    assert _git(repo, "config", "--get", "core.autocrlf") == str(autocrlf).lower()
     initial = engine.get_artifact("result-literature-synthesis", 1)
     assert not initial["metadata"]["evidence"]["access_limits_explicit"]
     commit = _git(repo, "rev-parse", "HEAD")
@@ -56,6 +81,9 @@ def test_complete_pilot_and_idempotent_resume(tmp_path, monkeypatch):
     assertions(engine, second)
     assert second["resumed"]
     assert _git(repo, "rev-parse", "HEAD") == commit
+    assert global_config.read_bytes() == global_bytes
+    if user_attributes is not None:
+        assert (repo / ".gitattributes").read_bytes() == user_attributes
 
 
 def test_pilot_resumes_after_interruption_before_review(tmp_path, monkeypatch):
@@ -82,3 +110,23 @@ def test_demo_preserves_unrelated_work_and_requires_fresh_state(tmp_path):
     assert engine.get_task(original["id"])["status"] == "queued"
     assert len(engine.list_tasks()) == 1
     assert not (tmp_path / "record").exists()
+
+
+def test_demo_preserves_an_existing_conflicting_byte_policy(tmp_path):
+    repo = tmp_path / "record"
+    repository = Repository(repo)
+    repository.initialize()
+    policy = repo / "analysis/.gitattributes"
+    policy.parent.mkdir()
+    original = b"* text eol=crlf\n"
+    policy.write_bytes(original)
+    _git(repo, "add", "--", "analysis/.gitattributes")
+    repository._commit(repo, "Existing participant analysis policy")
+    head = _git(repo, "rev-parse", "HEAD")
+    engine = Engine(tmp_path / "state.db", "agentic-collaboration")
+    with pytest.raises(WorkflowError, match="Preserve that record"):
+        run_pilot(engine, repo)
+    assert policy.read_bytes() == original
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert engine.list_tasks() == []
+    assert not (repo / "literature").exists()

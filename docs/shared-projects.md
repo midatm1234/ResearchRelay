@@ -2,11 +2,23 @@
 
 ResearchRelay runs one project per service/database. Multiple participants use individual project tokens; they can choose different agents and environments. Committed Markdown is the shared knowledge record. SQLite owns execution state, claims, attempts, results, and reviews. Source code/large datasets stay in their appropriate repositories/storage, with immutable references in the records.
 
-## Set up a shared working branch
+## Default knowledge base and other projects
 
-Use an existing repository and branch that participants may read and publish to. This pilot uses `git@github.com:midatm1234/ResearchRelay.git`, branch `SRTD_DT_test`, and knowledge directory `projects/agentic-collaboration`. Set `RESEARCHRELAY_PROJECT=agentic-collaboration` and use the default literature database or a new database to preserve an existing session. The full configuration example is in the README.
+A new service defaults to `git@github.com:midatm1234/ResearchRelay.git`, branch `SRTD_DT_test`, knowledge directory `projects/agentic-collaboration`, with project ID `agentic-collaboration`. The code checkout can be on `main`; committed knowledge is retrieved from the configured branch. Opening the project retrieves context and does not publish changes. The full configuration example is in the README.
 
-The coordinator can set repository metadata using **Configure repository** or `researchrelay project configure --server URL --url REPOSITORY --branch SRTD_DT_test --knowledge-path projects/agentic-collaboration`. The configured branch must exist. In live mode the binding targets GitHub SSH/HTTPS; demo mode additionally permits local bare repositories for reproducible tests.
+A binding already saved in the project database takes precedence over these startup defaults, including when the URL environment variable is blank. An explicit empty `RESEARCHRELAY_GITHUB_URL` disables the fallback only for a new unbound project. New defaults do not erase task state, cached records, or a group's chosen repository.
+
+An individual can run a personal project; a group can share one service with distinct participant tokens. To create a separate project, select new `RESEARCHRELAY_DB`, `RESEARCHRELAY_REPO`, and `RESEARCHRELAY_PROJECT` values and supply that project's repository/branch/knowledge path. One active binding is shared by all participants in a project. There is no per-user override that redirects other group members' knowledge source.
+
+The project coordinator can change that binding using **Configure repository** or:
+
+```bash
+researchrelay project configure --server http://127.0.0.1:8000 --url git@github.com:YOUR_ORG/YOUR_REPO.git --branch YOUR_BRANCH --knowledge-path projects/YOUR_PROJECT
+```
+
+Replace the placeholders with an existing repository, branch, and project directory matching the configured project ID. Only the coordinator's token may change the team binding. Service and worker Git permissions still apply. Live mode supports GitHub SSH/HTTPS; demo mode additionally permits local bare repositories for reproducible tests.
+
+For a credential-free cached literature demonstration, use `researchrelay serve --offline-demo --port 8001` and `researchrelay demo --offline`. Both select `.runtime/offline-demo/state.db` and `.runtime/offline-demo/project-record`; optional `--db` and `--repo` overrides must match between commands. Offline flags clear participant-token settings, use loopback only, and reject a database with a saved repository binding. They do not detach a shared project.
 
 The service host authenticates Git through its configured SSH/credential helper. Each participant authenticates to this project with their own token. These are separate permissions: participant tokens authorize trusted project writers through the service principal; they are not GitHub OAuth or provider API credentials. For direct participant Git publication, each local worker uses the participant's own Git credentials. Repository rules remain in effect; a protected-branch rejection needs an approved PR/review path, not a forced update.
 
@@ -44,7 +56,9 @@ Bob retrieves a **new** context, reads that committed finding, and publishes `pr
 
 ## Concurrent changes
 
-A publication names its observed `base_commit` and each changed file's `expected_sha256` (null means that path did not exist). The server checks the latest branch first and preserves unrelated changes. A changed target file or non-fast-forward race yields an actionable conflict; the service never force-pushes or silently overwrites a teammate.
+A publication names its observed `expected_repository` tuple (`url`, `branch`, `knowledge_path`), `base_commit`, and each changed file's `expected_sha256` (null means that path did not exist). The server checks the latest branch first and preserves unrelated changes. A changed target file or non-fast-forward race yields an actionable conflict; the service never force-pushes or silently overwrites a teammate.
+
+A changed repository binding is a conflict even if the new target contains the same commit and files. The browser clears old knowledge immediately, preserves and disables the draft, and requires a new contribution after reviewing the current source; it never silently redirects a report to another repository. Exact accepted network retries still identify their original publication.
 
 The browser retains your textarea draft on failure. **Retrieve latest for comparison** shows committed text without replacing your draft. Reconcile the content, explicitly acknowledge the comparison, then select **Use this reviewed base for my draft** before retrying. CLI users retrieve a new context and reconcile their saved Markdown themselves. Keep the publication request ID stable for a byte-identical network retry; use a new ID for a materially revised/reconciled request.
 

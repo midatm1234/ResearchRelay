@@ -171,6 +171,7 @@ def main():
                     assert publication["commit"]==retrieved["sync"]["latest_commit"]
                     stale = client.post("project/publish", headers={"Authorization": "Bearer "+tokens["alice"]}, json={
                         "base_commit": json.loads(saved_context.read_text(encoding="utf-8"))["sync"]["latest_commit"],
+                        "expected_repository": json.loads(saved_context.read_text(encoding="utf-8"))["repository"],
                         "changes": [{"path": target, "content": published["content"], "expected_sha256": None}],
                         "agent": published["metadata"]["producing_agent"], "request_id": "editor-smoke-stale", "message": "Intentional stale check"})
                     assert stale.status_code==409, "A stale absent-path edit must not overwrite the committed finding"

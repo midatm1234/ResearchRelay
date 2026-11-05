@@ -6,18 +6,21 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+DEFAULT_GITHUB_URL = 'git@github.com:midatm1234/ResearchRelay.git'
+DEFAULT_GITHUB_BRANCH = 'SRTD_DT_test'
+
 
 @dataclass
 class Settings:
     db_path: Path = field(default_factory=lambda: Path(os.getenv('RESEARCHRELAY_DB', '.runtime/literature/state.db')))
     repo_path: Path = field(default_factory=lambda: Path(os.getenv('RESEARCHRELAY_REPO', '.runtime/literature/project-record')))
     project_id: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_PROJECT', 'agentic-collaboration'))
-    mode: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_MODE', 'demo'))
+    mode: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_MODE', 'live'))
     tokens: dict = field(default_factory=lambda: json.loads(os.getenv('RESEARCHRELAY_TOKENS', '{}')))
     github_base: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_BASE', 'main'))
 
-    github_url: str | None = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_URL') or None)
-    github_branch: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_BRANCH', 'main'))
+    github_url: str | None = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_URL', DEFAULT_GITHUB_URL) or None)
+    github_branch: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_BRANCH', DEFAULT_GITHUB_BRANCH))
     knowledge_path: str | None = field(default_factory=lambda: os.getenv('RESEARCHRELAY_KNOWLEDGE_PATH') or None)
     sync_interval: float = field(default_factory=lambda: float(os.getenv('RESEARCHRELAY_SYNC_INTERVAL', '15')))
 

@@ -130,6 +130,9 @@ class ProjectSync:
             if any(term in failure for term in ("permission denied","authentication","could not read username","repository not found","publickey","host key verification")):
                 raise SyncError("Repository authentication or access failed.",503,kind="authentication_error",
                     next_action="Authenticate Git on the coordinator host and verify access to this repository. For SSH, verify its host key and run ssh -T git@github.com.")
+            if "couldn't find remote ref" in failure or "does not appear to be a git repository" in failure:
+                raise SyncError("The knowledge repository or selected branch has no accessible committed history.",422,kind="configuration",
+                    next_action="Create an initial commit and push the selected branch, or configure an existing repository and committed branch before retrieving knowledge.")
             raise SyncError("Git could not complete the repository operation.",409,kind="error",
                     next_action="Check the configured branch and Git access. A protected branch may require a reviewed pull request; no policy was bypassed.")
         return completed.stdout
@@ -304,9 +307,9 @@ class ProjectSync:
         return documents
 
     def refresh(self, force=False, require=False):
-        if not self.binding:
-            return self._state(status="disabled",error=None,next_action=None)
         with self._lock:
+            if not self.binding:
+                return self._state(status="disabled",latest_commit=None,last_checked_at=None,error=None,next_action=None)
             if not force and time.monotonic()-self._last_check<self.settings.sync_interval:
                 state = self.status()
                 if require and state["status"]!="synced":
@@ -331,9 +334,15 @@ class ProjectSync:
             return state
 
     def context(self, participant="human", force=True):
-        self.refresh(force=force,require=bool(self.binding))
+        with self._lock:
+            return self._context(participant,force)
+
+    def _context(self, participant, force):
+        bound = bool(self.binding)
+        self.refresh(force=force,require=bound)
         with self.engine._tx() as db:
-            documents = [json.loads(row[0]) for row in db.execute("SELECT data FROM knowledge_documents ORDER BY path")]
+            documents = ([json.loads(row[0]) for row in db.execute("SELECT data FROM knowledge_documents ORDER BY path")]
+                         if bound else [])
         tasks = self.engine.list_tasks()
         for task in tasks:
             task.pop("claim_token",None)
@@ -341,9 +350,12 @@ class ProjectSync:
                 "artifacts":self.engine.list_artifacts(all_versions=False)}
 
     def check_inputs(self, metadata):
+        with self._lock:
+            return self._check_inputs(metadata)
+
+    def _check_inputs(self, metadata):
         if not self.binding:
             return
-        state = self.refresh(force=True,require=True)
         pins = metadata.get("project_context")
         if not isinstance(pins,dict) or not pins.get("commit"):
             raise SyncError("A shared-project result must identify its retrieved project commit and input document hashes.",422,
@@ -352,6 +364,13 @@ class ProjectSync:
             not isinstance(ref,dict) or not isinstance(ref.get("path"),str) or not re.fullmatch(r"[0-9a-f]{64}",str(ref.get("sha256","")))
             for ref in pins["documents"]):
             raise SyncError("Result project context must contain an exact commit and version-pinned document references.",422,kind="validation")
+        if not isinstance(pins.get("repository"),dict):
+            raise SyncError("Shared-result context must identify its knowledge repository, branch, and directory.",422,kind="validation",
+                            next_action="Retrieve project context before executing and include its repository binding in project_context.")
+        if self._validate_binding(pins["repository"]) != self._validate_binding(self.binding):
+            raise SyncError("The result's knowledge repository, branch, or directory changed while the task ran.",
+                            next_action="Inspect the new source and explicitly reconcile/retry the task; an identical commit does not authorize a different repository.")
+        state = self.refresh(force=True,require=True)
         cache = self._cache()
         if not self._ancestor(cache,pins["commit"],state["latest_commit"]):
             raise SyncError("The result's project commit is not a retrieved ancestor of the shared branch.",422,kind="validation")
@@ -455,18 +474,35 @@ class ProjectSync:
             finally:
                 self._git(cache,"worktree","remove","--force",str(workspace),check=False)
 
-    def publish(self, participant, *, base_commit, changes, agent, request_id, message):
-        if not self.binding:
-            raise SyncError("This project has no configured GitHub repository.",422,kind="configuration")
+    def publish(self, participant, *, base_commit, changes, agent, request_id, message, expected_repository=None):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}",participant) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",request_id):
             raise SyncError("Participant and request ID must be safe stable identifiers.",422,kind="validation")
         if not re.fullmatch(r"[0-9a-f]{40,64}",base_commit or "") or not agent or any(ord(character)<32 for character in agent) or len(agent)>200:
             raise SyncError("Publication requires an exact base commit and a producing agent.",422,kind="validation")
         if not changes or len(changes)>30:
             raise SyncError("Publish 1–30 prepared Markdown documents per request.",422,kind="validation")
-        payload = dict(base_commit=base_commit,changes=changes,agent=agent,request_id=request_id,message=message)
+        payload = dict(base_commit=base_commit,changes=changes,agent=agent,request_id=request_id,message=message,
+                       expected_repository=expected_repository)
         digest = hashlib.sha256(dumps(payload).encode()).hexdigest()
         with self._lock:
+            # An acknowledged exact replay belongs to its original source, even
+            # after the project's selected repository/branch/prefix has changed.
+            with self.engine._tx() as db:
+                row = db.execute("SELECT * FROM publications WHERE participant=? AND request_id=?",(participant,request_id)).fetchone()
+                if row and row["payload_hash"]!=digest:
+                    raise SyncError("Publication request ID was reused with different content.")
+                if row and row["response"]:
+                    return json.loads(row["response"])
+            if not self.binding:
+                raise SyncError("This project has no configured GitHub repository.",422,kind="configuration")
+            if not isinstance(expected_repository,dict):
+                raise SyncError("Publication requires the repository binding from its retrieved context.",422,kind="validation",
+                                next_action="Retrieve fresh project context and include its repository as expected_repository.")
+            binding = self._validate_binding(self.binding)
+            observed = self._validate_binding(expected_repository)
+            if observed != binding:
+                raise SyncError("The knowledge repository, branch, or directory changed since this contribution's context was retrieved.",
+                                next_action="Retrieve current context, confirm the intended source, and explicitly reconcile or recreate the contribution before publishing.")
             for change in changes:
                 name,content = change["path"],change["content"]
                 self._safe_path(name,self.binding["knowledge_path"])
@@ -484,11 +520,6 @@ class ProjectSync:
                     if metadata.get("responsible_participant")!=participant or metadata.get("producing_agent")!=agent:
                         raise SyncError("Document participant and producing agent must match this authenticated contribution.",403,kind="authorization",paths=[name])
             with self.engine._tx() as db:
-                row = db.execute("SELECT * FROM publications WHERE participant=? AND request_id=?",(participant,request_id)).fetchone()
-                if row and row["payload_hash"]!=digest:
-                    raise SyncError("Publication request ID was reused with different content.")
-                if row and row["response"]:
-                    return json.loads(row["response"])
                 db.execute("INSERT OR REPLACE INTO publications VALUES(?,?,?,?,NULL)",(participant,request_id,digest,dumps(payload)))
             try:
                 for attempt in range(2):
@@ -529,12 +560,12 @@ class ProjectSync:
                         raise SyncError("Publication could not be pushed; the draft and local commit were retained.",kind="error",
                             next_action="Check write access and branch protection, refresh, then retry this request. Use a reviewed PR if required.")
                 state = self.refresh(force=True,require=True)
-                response = dict(status="published",commit=commit,branch=self.binding["branch"],
+                response = dict(status="published",commit=commit,branch=binding["branch"],repository=binding,
                                 paths=[change["path"] for change in changes],sync=state)
                 with self.engine._tx() as db:
                     db.execute("UPDATE publications SET response=? WHERE participant=? AND request_id=?",
                                (dumps(response),participant,request_id))
-                    self.engine._event(db,"knowledge_published",detail=dict(participant=participant,agent=agent,commit=commit,paths=response["paths"]))
+                    self.engine._event(db,"knowledge_published",detail=dict(participant=participant,agent=agent,commit=commit,repository=binding,paths=response["paths"]))
                 return response
             except SyncError as error:
                 self._state(status=error.kind,error=str(error),next_action=error.next_action,last_checked_at=timestamp())

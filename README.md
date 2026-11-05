@@ -4,9 +4,9 @@ A working experiment for a small scientific team whose participant agents collab
 
 ## Start here
 
-Use Python 3.12 and Git 2.28 or newer. The web interface has no Node.js build step; SQLite is included with Python. The local pilot needs neither Claude nor GitHub credentials. [macOS setup](#macos-setup-apple-silicon-and-intel) below covers both Mac architectures.
+Use Python 3.12 and Git 2.28 or newer. The web interface has no Node.js build step; SQLite is included with Python. [macOS setup](#macos-setup-apple-silicon-and-intel) below covers Apple Silicon and Intel.
 
-The source is in [midatm1234/ResearchRelay](https://github.com/midatm1234/ResearchRelay). In a new checkout:
+A new service uses **[midatm1234/ResearchRelay](https://github.com/midatm1234/ResearchRelay), branch `SRTD_DT_test`, directory `projects/agentic-collaboration`** as its shared knowledge base. The source-code checkout may be on `main`; the configured knowledge branch still determines what agents retrieve. Start from a source checkout:
 
 ```bash
 git clone https://github.com/midatm1234/ResearchRelay.git
@@ -15,41 +15,31 @@ mamba env create -f environment.yml
 mamba run -n researchrelay researchrelay serve --port 8000
 ```
 
-Run service, demo, and test commands from the checkout directory. Open **http://127.0.0.1:8000**, then choose **Run literature pilot**. The browser can close while the service and workers continue. Stop the service with Ctrl+C. Existing users can skip cloning and environment creation.
-
-In VS Code, install the recommended Python extensions, select the `researchrelay` environment with **Python: Select Interpreter**, then press **F5** to run **ResearchRelay: service**. The **Terminal: Run Task** menu also provides service, literature-demo, test, and editor-worker tasks. For Copilot or another extension agent, follow the [VS Code handoff guide](docs/vscode.md), including its [fresh collaborative-search scope](examples/literature-search-meeting.md).
-
-For development, run `git switch SRTD_DT_test` after cloning and before installing the environment.
-
-To run the same demonstration from another terminal against the dashboard's default database:
+Open **http://127.0.0.1:8000**. The dashboard retrieves committed project knowledge and shows the repository, branch, commit, and actionable synchronization errors. The service host needs SSH read permission for `git@github.com:midatm1234/ResearchRelay.git`; publication additionally needs write permission and is an explicit action. Starting or opening the service does not push changes. Each worker uses its participant's own Git access. To check read access:
 
 ```bash
-mamba run -n researchrelay researchrelay demo
+git ls-remote git@github.com:midatm1234/ResearchRelay.git refs/heads/SRTD_DT_test
 ```
 
-Use the button or CLI once; both coordinate through the same SQLite database. To run an independent fresh experiment without deleting existing work:
+Run commands from the checkout. Copy `.env.example` to `.env` and configure distinct project tokens before team use. Use **Access** for your browser token and **My agent** for your connection. The coordinator may select a different repository/branch/directory for a personal or group project through **Configure repository** or the CLI below. A saved project binding takes precedence over startup defaults and is shared by its participants; this version has one active knowledge repository per service/database.
+
+### Credential-free offline demonstration
+
+Use an explicit offline service to try the deterministic literature workflow without GitHub or model credentials:
 
 ```bash
-mamba run -n researchrelay researchrelay demo --db .runtime/session-2.db --repo .runtime/session-2-record
+mamba run -n researchrelay researchrelay serve --offline-demo --port 8001
 ```
 
-To show that independent experiment in the dashboard, start a separate service. In macOS/Linux zsh or bash:
+Open **http://127.0.0.1:8001** and choose **Run literature pilot**, or run the same workflow from another terminal:
 
 ```bash
-export RESEARCHRELAY_DB='.runtime/session-2.db'
-export RESEARCHRELAY_REPO='.runtime/session-2-record'
-mamba run -n researchrelay researchrelay serve --port 8001
+mamba run -n researchrelay researchrelay demo --offline
 ```
 
-In Windows PowerShell:
+Both use `.runtime/offline-demo/state.db` and `.runtime/offline-demo/project-record`, separate from the shared project. Use the button or CLI once; they coordinate through that same offline database. For another independent session, pass matching `--db .runtime/session-2.db --repo .runtime/session-2-record` to both offline commands. Offline flags clear participant-token settings and only serve loopback; an existing bound database is refused rather than erased or detached. Closing a browser does not stop the service/workers; stop a service with Ctrl+C.
 
-```powershell
-$env:RESEARCHRELAY_DB = '.runtime/session-2.db'
-$env:RESEARCHRELAY_REPO = '.runtime/session-2-record'
-mamba run -n researchrelay researchrelay serve --port 8001
-```
-
-API documentation: **http://127.0.0.1:8000/docs**. Configuration: copy `.env.example` to `.env` and edit. Runtime state and credentials are Git-ignored.
+API documentation: **http://127.0.0.1:8000/docs** (port 8001 for the offline service). Runtime state, `.env`, and credentials are Git-ignored. An explicitly empty `RESEARCHRELAY_GITHUB_URL` disables the startup fallback for a new unbound project; it does not replace a binding already saved in that project's database.
 
 ## macOS setup (Apple Silicon and Intel)
 
@@ -84,7 +74,7 @@ cp .env.example .env
 
 If you already cloned the repository, start with `cd` into that checkout instead. If the `researchrelay` environment already exists, use `mamba run -n researchrelay python -m pip install -r requirements.lock.txt -e ".[dev]"` to update its dependencies. Quote extras such as `".[dev]"` in zsh to prevent filename expansion.
 
-Edit `.env` with your text editor. Its default `RESEARCHRELAY_MODE=demo`, empty token mapping, and `.runtime/` paths are enough for the local pilot. To keep state outside the checkout, paths in this file may use `~` and spaces, for example:
+Edit `.env` with your text editor. Its default `RESEARCHRELAY_MODE=live` retrieves the shared `SRTD_DT_test` knowledge branch using the host's SSH access. Set distinct participant tokens before team use. For a credential-free local pilot, use the explicit offline commands below rather than changing a shared project's binding. To keep state outside the checkout, paths in this file may use `~` and spaces, for example:
 
 ```dotenv
 RESEARCHRELAY_DB="~/Library/Application Support/ResearchRelay/state.db"
@@ -101,10 +91,10 @@ Terminal 1, from the checkout:
 mamba run -n researchrelay researchrelay serve --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:8000**. In Terminal 2, `cd` into the same checkout and run the demonstration, or use the dashboard's **Run literature pilot** button:
+Open **http://127.0.0.1:8000** to retrieve shared knowledge. For the credential-free demonstration, start a separate service with `mamba run -n researchrelay researchrelay serve --offline-demo --port 8001` and open **http://127.0.0.1:8001**. In Terminal 2, `cd` into the same checkout and run the offline demonstration, or use that offline dashboard's **Run literature pilot** button:
 
 ```bash
-mamba run -n researchrelay researchrelay demo
+mamba run -n researchrelay researchrelay demo --offline
 mamba run -n researchrelay python -m pytest -q
 mamba run -n researchrelay python -m pip check
 mamba run -n researchrelay python scripts/smoke.py
@@ -145,7 +135,7 @@ The [macOS compatibility workflow](.github/workflows/macos.yml) runs native Pyth
 
 ## The local literature pilot
 
-The bundled [meeting notes](examples/meeting-notes.txt) and [verified literature source notes](projects/agentic-collaboration/sources) drive the default workflow. Its 2026-11-04 [search record](projects/agentic-collaboration/search-record.md) records what was actually searched and inspected.
+The bundled [meeting notes](examples/meeting-notes.txt) and [verified literature source notes](projects/agentic-collaboration/sources) drive the explicit offline demonstration. Its 2026-11-04 [search record](projects/agentic-collaboration/search-record.md) records what was actually searched and inspected.
 
 1. Meeting notes become an attributable summary, explicit decisions with rationale, editable task proposals, and open questions. Demo scope approval is scripted and labeled; ordinary meeting intake requires a participant to edit and approve proposals.
 2. Alice inventories human–AI collaboration evidence while Bob inventories multi-agent coordination evidence concurrently in isolated Git worktrees. Local Python scripts read the verified notes and record their exact data/code hashes and environment.
@@ -156,17 +146,17 @@ The bundled [meeting notes](examples/meeting-notes.txt) and [verified literature
 
 This is **local demonstration mode**: deterministic scripted agents, real note processing, real SQLite and Git, and simulated pull requests. It needs no model or GitHub credentials. It performs **no fresh literature search or live model inference** and does not push to GitHub. The source notes retain the evidence access limits of the original search; this run does not convert them into a systematic review or establish productivity gains.
 
-The **Run literature pilot** button and `researchrelay demo` run this same workflow. Use an unbound demo database/repository: a configured shared project hides this button and rejects a local demo to preserve its scope. The separate `researchrelay literature-pilot` below demonstrates publication and handoff through a shared Git remote. Inspect the [executed example records](examples/literature-record) without running the service.
+The offline **Run literature pilot** button and `researchrelay demo --offline` run this same workflow. Use an unbound offline database/repository: a configured shared project hides this button and rejects a local demo to preserve its scope. The separate `researchrelay literature-pilot` below demonstrates publication and handoff through a shared Git remote. Inspect the [executed example records](examples/literature-record) without running the service.
 
 ## Shared GitHub projects and participant agents
 
 ResearchRelay coordinates one project per service/database, with multiple authenticated participants and participant-owned workers. GitHub preserves committed project knowledge; SQLite remains authoritative for task claims, attempts, reviews, and execution state. Browser polling retrieves other participants' changes without requiring an always-open browser or a messaging service.
 
-### Configure the literature-review project
+### Use the default or choose another knowledge repository
 
 The initial review is in [projects/agentic-collaboration](projects/agentic-collaboration), on branch `SRTD_DT_test`. It covers human–agent collaboration, multi-agent coordination, asynchronous handoffs, shared memory, and scientific provenance. Its search log records the date, queries, source selection, and verification limits; source notes distinguish published research, preprints, and software documentation.
 
-Use the default literature runtime paths, or choose new paths to preserve an existing working-session database:
+New installations already use this binding. To make its configuration explicit, use the following `.env` values. Preserve a saved binding when continuing an existing project; use new database/repository paths for a separate personal or group project:
 
 ```dotenv
 RESEARCHRELAY_PROJECT=agentic-collaboration
@@ -184,7 +174,7 @@ Replace the token placeholders before team use. The service host's Git identity 
 
 Start the service with the macOS/Windows commands above. Use **Access** in the dashboard to enter your participant token for that browser session. **Retrieve updates** forces a new fetch; **My agent** stores your non-secret connection profile. The shared knowledge panel shows the repository, branch, latest retrieved commit, synchronization errors, source notes, and attributed contributions.
 
-Alternatively, configure the binding through the coordinator API/CLI. In macOS/Linux zsh or bash:
+To select a different repository, change URL, branch, and knowledge path in **Configure repository** or use the coordinator API/CLI. This changes the shared source for every participant in this project; it is not a per-user override. To explicitly select the default binding in macOS/Linux zsh or bash:
 
 ```bash
 export RESEARCHRELAY_TOKEN='your-coordinator-project-token'
@@ -198,7 +188,7 @@ In PowerShell, set the same token with `$env:RESEARCHRELAY_TOKEN = 'your-coordin
 
 Opening the project, refreshing it, and starting a task retrieve committed context. The dashboard polls workflow state every four seconds; Git retrieval is bounded by `RESEARCHRELAY_SYNC_INTERVAL` (15 seconds by default), with explicit retrieval available anytime. Status includes the latest retrieved commit, last check, and a next action for authentication, connectivity, branch-policy, or conflict errors.
 
-Each publication names the commit and file hashes that the participant actually read. The service preserves unrelated concurrent contributions, rejects changes to a touched file when its expected version is stale, and uses a normal push. A race at push time cannot silently replace a teammate's commit. Browser drafts remain in the editor after a conflict: retrieve the latest version, compare the text, explicitly acknowledge reconciliation, then publish against the reviewed base. Prefer a new review/extension artifact when commenting on someone else's finding.
+Each publication pins the repository URL, branch, knowledge directory, commit, and file hashes that the participant actually read. The service preserves unrelated concurrent contributions, rejects changes to a touched file when its expected version is stale, and uses a normal push. A race at push time cannot silently replace a teammate's commit. Browser drafts remain in the editor after a conflict: retrieve the latest version, compare the text, explicitly acknowledge reconciliation, then publish against the reviewed base. If the project repository/branch/directory changes, the editor immediately clears old knowledge and preserves but disables an existing draft. Copy the text, retrieve and review the new source, then create a new contribution with the appropriate path and metadata; a draft is never automatically retargeted. Prefer a new review/extension artifact when commenting on someone else's finding.
 
 Participant access tokens identify trusted writers within this project; this version does **not** implement per-user GitHub OAuth. Service-originated commits use the service Git principal and record the responsible participant and producing agent. A participant's local worker uses that participant's own clone, tools, provider credentials, and GitHub permissions for its isolated task branches. See [shared-project operations](docs/shared-projects.md).
 
@@ -283,7 +273,7 @@ flowchart LR
 ```
 
 - **One project per service/database.** Intended for a trusted small team and one service process, with SQLite WAL transactions fencing concurrent claims and submissions. This is not a multi-tenant hosted product.
-- **Coordination is separate from execution.** FastAPI serves the dashboard and workflow API. Participant workers poll persistent tasks and run in their own environments. The server's demo runner launches only the bundled literature-note workflow.
+- **Coordination is separate from execution.** The default service retrieves GitHub knowledge. FastAPI serves the dashboard and workflow API. Participant workers poll persistent tasks and run in their own environments. The explicit offline service's demo runner launches only the bundled literature-note workflow.
 - **SQLite owns execution state.** Tasks, attempts, leases, events, immutable artifact versions, submissions, review records, decisions, measures, and demo job status survive browser closure and restarts. No in-memory queue owns task work.
 - **Git preserves the project record.** Immutable artifact exports, task code/results, and derived dashboard snapshots are reviewable outside the application. Editing a snapshot does not change task state. Imported artifact changes become evidence; execution or scope changes still use explicit API operations.
 - **Conservative meeting extraction.** The initial local parser recognizes explicit decision/question markers, structured task lines, and simple named assignments. Inferred owners, criteria, outputs, and dependencies are visible and editable. It preserves source notes and does not claim comprehensive natural-language understanding.
@@ -362,7 +352,7 @@ Back up the database together with its project repository. Use SQLite's backup f
 
 Use the dashboard assessment to record actual human coordination minutes, a 1–5 rating of handoff clarity, and a short observation. The worker/API can additionally record clarification requests. Derived measures include task execution time, review cycles, rework, and unresolved blockers. Demo-generated measures are labeled as scripted or derived, and missing human measures remain unmeasured.
 
-Suggested session: paste or inspect the supplied notes, correct proposed scope, run the local pilot, inspect the first and revised synthesis, resolve the scientific decision with a rationale, and record whether you understand what others completed and what needs attention next. Compare coordination time and comprehension with your existing process before claiming a productivity gain.
+Suggested offline session: paste or inspect the supplied notes, correct proposed scope, run the local pilot, inspect the first and revised synthesis, resolve the scientific decision with a rationale, and record whether you understand what others completed and what needs attention next. Compare coordination time and comprehension with your existing process before claiming a productivity gain.
 
 ## Verification and limits
 
@@ -383,25 +373,15 @@ mamba run -n researchrelay python scripts/smoke.py --browser
 For manual inspection with a separate browser smoke script, keep an isolated service running. On macOS/Linux:
 
 ```bash
-export RESEARCHRELAY_MODE='demo'
-export RESEARCHRELAY_GITHUB_URL=''
-export RESEARCHRELAY_KNOWLEDGE_PATH=''
 export RESEARCHRELAY_TOKENS='{}'
-export RESEARCHRELAY_DB='.runtime/browser-check.db'
-export RESEARCHRELAY_REPO='.runtime/browser-check-record'
-mamba run -n researchrelay researchrelay serve --port 8767
+mamba run -n researchrelay researchrelay serve --offline-demo --db .runtime/browser-check.db --repo .runtime/browser-check-record --port 8767
 ```
 
 On Windows PowerShell, use these environment assignments instead:
 
 ```powershell
-$env:RESEARCHRELAY_MODE = 'demo'
-$env:RESEARCHRELAY_GITHUB_URL = ''
-$env:RESEARCHRELAY_KNOWLEDGE_PATH = ''
 $env:RESEARCHRELAY_TOKENS = '{}'
-$env:RESEARCHRELAY_DB = '.runtime/browser-check.db'
-$env:RESEARCHRELAY_REPO = '.runtime/browser-check-record'
-mamba run -n researchrelay researchrelay serve --port 8767
+mamba run -n researchrelay researchrelay serve --offline-demo --db .runtime/browser-check.db --repo .runtime/browser-check-record --port 8767
 ```
 
 In another terminal, with that fresh service running:

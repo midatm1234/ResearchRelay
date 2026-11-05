@@ -1,6 +1,6 @@
 # Implementation contract
 
-Python FastAPI + SQLite (authoritative state), portable Markdown/YAML artifacts, vanilla JS dashboard. The default literature demo processes the verified note snapshot; external GitHub and model calls are opt-in. Participant workers support VS Code editor handoff, Claude CLI, API, command, and manual connections.
+Python FastAPI + SQLite (authoritative state), portable Markdown/YAML artifacts, vanilla JS dashboard. A new service retrieves knowledge from the ResearchRelay GitHub SRTD_DT_test branch; saved project bindings take precedence. The explicit offline literature demo processes the verified note snapshot without GitHub or model calls. Publication and live inference remain explicit actions. Participant workers support VS Code editor handoff, Claude CLI, API, command, and manual connections.
 
 `researchrelay.engine.Engine(db_path, project_id='agentic-collaboration')` is the coordination facade. Methods return JSON dictionaries. `.connect()` returns a SQLite connection; `.dashboard(participant='human', since=0)` returns project_id, mode, tasks, artifacts, decisions, events, metrics, changes_since_last_visit. Tasks: id,title,owner,objective,dependencies(list task IDs),input_refs(list {id,version}),expected_outputs,acceptance_criteria,status,attempts,max_attempts,revision_count,claim_token,lease_until,progress,result_ref,blocker. Task status: queued,running,blocked,awaiting_review,completed,failed,canceled. Artifacts stored as {id,version,artifact_type,metadata,body,sha256}. Events have seq,kind,task_id,detail,created_at.
 

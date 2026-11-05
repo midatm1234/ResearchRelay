@@ -193,3 +193,60 @@ def test_scripted_demo_cannot_mutate_configured_shared_project(tmp_path):
         assert 'dedicated demo database' in response.json()['detail']
         assert engine.job_status()['status'] == 'not_started'
         assert not engine.list_tasks()
+
+
+def test_importing_api_does_not_initialize_a_live_project_database(tmp_path):
+    import os
+    import subprocess
+    import sys
+    database = tmp_path/'untouched-team.db'
+    environment = dict(os.environ,RESEARCHRELAY_MODE='live',
+                       RESEARCHRELAY_DB=str(database),RESEARCHRELAY_REPO=str(tmp_path/'team-record'),
+                       RESEARCHRELAY_GITHUB_URL='git@github.com:midatm1234/ResearchRelay.git')
+    completed = subprocess.run([sys.executable,'-c',
+        'import researchrelay.api; from researchrelay.api import create_app'],
+        env=environment,capture_output=True,text=True,timeout=30)
+    assert completed.returncode == 0,completed.stderr
+    assert not database.exists()
+    assert not (tmp_path/'team-record').exists()
+
+
+def test_repository_rebind_cannot_split_result_validation_and_completion(tmp_path,monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    settings = Settings(db_path=tmp_path/'state.db',repo_path=tmp_path/'record',github_url=None)
+    engine = Engine(settings.db_path,settings.project_id)
+    engine.create_task(id='source-review',title='Review a source',owner='alice',acceptance_criteria=['Cite supplied evidence'])
+    claim = engine.claim_task('source-review','alice')
+    app = create_app(settings,engine)
+    sync = app.state.project_sync
+    entered,release,rebound = threading.Event(),threading.Event(),threading.Event()
+    original_submit = engine.submit_result
+    monkeypatch.setattr(sync,'check_inputs',lambda metadata:None)
+    monkeypatch.setattr(sync,'refresh',lambda *args,**kwargs:{'status':'synced'})
+    def paused_submit(*args,**kwargs):
+        entered.set()
+        assert release.wait(10)
+        return original_submit(*args,**kwargs)
+    monkeypatch.setattr(engine,'submit_result',paused_submit)
+    def rebind():
+        result = sync.configure('git@github.com:team/next-project.git','main','projects/agentic-collaboration')
+        rebound.set()
+        return result
+    artifact = {'metadata':{'id':'result-source-review','artifact_type':'result','project_id':engine.project_id,
+        'task_id':'source-review','data':['Approved source fixture'],'code':['fixture code'],
+        'configuration':{'mode':'test'},'environment':{'python':'3.12'},'evidence':['Cited source']},
+        'body':'A bounded fixture finding.'}
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as pool:
+        submitted = pool.submit(client.post,'/api/tasks/source-review/submit',json={
+            'claim_token':claim['claim_token'],'idempotency_key':'atomic-source-submit','artifact':artifact})
+        assert entered.wait(10)
+        changing = pool.submit(rebind)
+        try:
+            assert not rebound.wait(.2), 'A source switch must wait until the validated completion is durable'
+        finally:
+            release.set()
+        response = submitted.result(timeout=10)
+        changing.result(timeout=10)
+    assert response.status_code == 200,response.text
+    assert rebound.is_set() and engine.get_task('source-review')['status'] == 'awaiting_review'

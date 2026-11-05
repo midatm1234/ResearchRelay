@@ -100,6 +100,7 @@ def test_editor_handoff_shared_source_result_review_and_publication(tmp_path,mon
         assert outcome['status']=='submitted'
         artifact=engine.get_artifact('result-source-review')
         assert artifact['metadata']['provenance']['execution_kind']=='editor_handoff'
+        assert artifact['metadata']['project_context']['repository']==context['project']['repository']
         assert artifact['metadata']['producing_agent']=='vscode/editor-selected'
         assert artifact['metadata']['configuration']['model_selection_verified'] is False
         assert engine.get_task('source-review')['status']=='awaiting_review'
@@ -118,7 +119,7 @@ def test_editor_handoff_shared_source_result_review_and_publication(tmp_path,mon
         fresh=client.get('project/context').json()
         from researchrelay.knowledge import render_knowledge
         result=render_knowledge(artifact['metadata'],artifact['body'])
-        publication=client.post('project/publish',json={'base_commit':fresh['sync']['latest_commit'],
+        publication=client.post('project/publish',json={'base_commit':fresh['sync']['latest_commit'],'expected_repository':fresh['repository'],
             'request_id':'editor-finding-publication','agent':'vscode/editor-selected',
             'message':'Record editor handoff source finding','changes':[{'path':'projects/agentic-collaboration/editor-finding.md',
               'content':result,'expected_sha256':None}]})
@@ -233,8 +234,8 @@ def test_vscode_tasks_debugger_and_actual_module_entrypoint():
             module_help=subprocess.run([sys.executable,*task['args'][:3],'--help'],cwd=root,
                                        capture_output=True,text=True,timeout=30)
             assert module_help.returncode==0,module_help.stderr
-    demo=next(task for task in tasks['tasks'] if task['label']=='ResearchRelay: run literature demo')
-    assert demo['args']==['-m','researchrelay','demo']
+    demo=next(task for task in tasks['tasks'] if task['label']=='ResearchRelay: run offline literature demo')
+    assert demo['args']==['-m','researchrelay','demo','--offline']
     launch=json.loads((root/'.vscode/launch.json').read_text())['configurations'][0]
     assert launch['type']=='debugpy' and launch['module']=='researchrelay'
     assert launch['envFile']=='${workspaceFolder}/.env'
@@ -277,3 +278,126 @@ def test_cli_demo_refuses_a_persisted_binding_without_environment_url(tmp_path,m
     assert error.value.code==2 and 'fresh unbound database' in capsys.readouterr().err
     assert engine.list_tasks()==before
     assert not (tmp_path/'unused-record').exists()
+
+
+@pytest.mark.parametrize('repository',[
+    {'url':'git@github.com:midatm1234/ResearchRelay.git','branch':'SRTD_DT_test','knowledge_path':'projects/agentic-collaboration'},
+    {'url':'git@github.com:other-team/research.git','branch':'group-knowledge','knowledge_path':'knowledge/group-a'},
+    None,
+])
+def test_editor_handoff_identifies_actual_authoritative_knowledge_source(tmp_path,repository):
+    project={'repository':repository,'sync':{'status':'synced' if repository else 'disabled',
+                                            'latest_commit':'a'*40 if repository else None}}
+    handoff=prepare_handoff(tmp_path,{'project':project})
+    source=json.loads((tmp_path/'.researchrelay-exchange/knowledge-source.json').read_text())
+    assert handoff['knowledge_source']==source
+    instructions=Path(handoff['instructions']).read_text()
+    if repository:
+        assert source['repository']==repository['url']
+        assert source['branch']==repository['branch'] and source['knowledge_path']==repository['knowledge_path']
+        assert source['retrieved_commit']=='a'*40
+        assert all(value in instructions for value in repository.values())
+        assert 'does not select the knowledge branch' in instructions
+        assert 'falling back to bundled example notes' in instructions
+    else:
+        assert source['repository'] is None and source['retrieved_commit'] is None
+        assert 'explicitly unbound local/offline handoff' in instructions
+        assert 'git@github.com:midatm1234' not in instructions
+
+
+def test_editor_resume_rejects_repository_branch_change_with_identical_documents(tmp_path,monkeypatch):
+    engine,app,worker,remote=make_worker(tmp_path,configured=True)
+    def interrupted(*args,**kwargs): raise KeyboardInterrupt()
+    monkeypatch.setattr('researchrelay.vscode.wait_for_report',interrupted)
+    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-project-token'}) as client:
+        worker.client=client
+        with pytest.raises(KeyboardInterrupt): worker.run_once()
+        state=next((worker.repository.path/'.git/researchrelay-worker').glob('*.handoff.json'))
+        before=json.loads(state.read_text())['context']['project']
+        _git(remote,'update-ref','refs/heads/group-knowledge',before['sync']['latest_commit'])
+        with TestClient(app,headers={'Authorization':'Bearer human-project-token'}) as human:
+            changed=human.put('/api/project/repository',json={'url':str(remote),'branch':'group-knowledge',
+                             'knowledge_path':'projects/agentic-collaboration'})
+            assert changed.status_code==200,changed.text
+        after=worker.project_context()
+        assert Worker._context_pins(after)['documents']==Worker._context_pins(before)['documents']
+        assert after['repository']!=before['repository']
+        with pytest.raises(ProviderError,match='knowledge repository/branch/path was reconfigured'):
+            worker.run_once(resume_handoff=state)
+    assert engine.get_task('source-review')['status']=='blocked'
+
+
+@pytest.mark.parametrize('custom_paths',[False,True])
+def test_offline_service_selects_separate_unbound_project_and_clears_live_tokens(tmp_path,monkeypatch,custom_paths):
+    from researchrelay.cli import main as cli
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('RESEARCHRELAY_MODE','live')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_URL','git@github.com:group/live.git')
+    monkeypatch.setenv('RESEARCHRELAY_PROJECT','another-group')
+    monkeypatch.setenv('RESEARCHRELAY_TOKENS','{"private-team-token":"human"}')
+    monkeypatch.setenv('RESEARCHRELAY_DB',str(tmp_path/'live.db'))
+    monkeypatch.setenv('RESEARCHRELAY_REPO',str(tmp_path/'live-record'))
+    captured={}
+    def start(*args,**kwargs):
+        settings=Settings()
+        captured.update(mode=settings.mode,url=settings.github_url,project=settings.project_id,
+                        tokens=settings.tokens,db=settings.db_path,repo=settings.repo_path,kwargs=kwargs)
+    monkeypatch.setattr('uvicorn.run',start)
+    arguments=['serve','--offline-demo']
+    if custom_paths: arguments+=['--db',str(tmp_path/'custom/demo.db'),'--repo',str(tmp_path/'custom/record')]
+    cli(arguments)
+    assert captured['mode']=='demo' and captured['url'] is None
+    assert captured['project']=='agentic-collaboration' and captured['tokens']=={}
+    expected_db=tmp_path/'custom/demo.db' if custom_paths else Path('.runtime/offline-demo/state.db')
+    expected_repo=tmp_path/'custom/record' if custom_paths else Path('.runtime/offline-demo/project-record')
+    assert captured['db']==expected_db and captured['repo']==expected_repo
+    assert captured['db'].exists() and not (tmp_path/'live.db').exists()
+
+
+def test_offline_demo_flag_uses_same_dedicated_state_as_offline_service(tmp_path,monkeypatch,capsys):
+    from researchrelay.cli import main as cli
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('RESEARCHRELAY_MODE','live')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_URL','git@github.com:group/live.git')
+    monkeypatch.setenv('RESEARCHRELAY_PROJECT','another-group')
+    monkeypatch.setenv('RESEARCHRELAY_TOKENS','{"private-team-token":"human"}')
+    captured={}
+    def demo(engine,repo):
+        captured.update(project=engine.project_id,db=engine.db_path,repo=repo,settings=Settings())
+        return {'status':'test-stub'}
+    monkeypatch.setattr('researchrelay.pilot.run_pilot',demo)
+    cli(['demo','--offline'])
+    assert captured['project']=='agentic-collaboration'
+    assert captured['db']==Path('.runtime/offline-demo/state.db')
+    assert captured['repo']==Path('.runtime/offline-demo/project-record').resolve()
+    assert captured['settings'].tokens=={} and captured['settings'].github_url is None
+
+
+def test_offline_service_preserves_and_rejects_a_saved_shared_binding(tmp_path,monkeypatch,capsys):
+    from researchrelay.cli import main as cli
+    from researchrelay.sync import ProjectSync
+    engine=Engine(tmp_path/'bound.db',project_id='agentic-collaboration')
+    settings=Settings(db_path=engine.db_path,repo_path=tmp_path/'bound-record',github_url=None)
+    saved={'url':'git@github.com:group/research.git','branch':'knowledge','knowledge_path':'projects/team'}
+    synchronizer=ProjectSync(settings,engine);synchronizer._set('shared_repository',saved)
+    before=engine.list_tasks()
+    monkeypatch.setattr('uvicorn.run',lambda *a,**k:pytest.fail('Bound database must not start offline'))
+    with pytest.raises(SystemExit) as error:
+        cli(['serve','--offline-demo','--db',str(engine.db_path),'--repo',str(tmp_path/'bound-record')])
+    assert error.value.code==2 and 'saved binding was preserved' in capsys.readouterr().err
+    assert synchronizer.binding==saved and engine.list_tasks()==before
+
+
+def test_service_db_override_requires_explicit_offline_mode(tmp_path,capsys):
+    from researchrelay.cli import main as cli
+    with pytest.raises(SystemExit) as error: cli(['serve','--db',str(tmp_path/'do-not-create.db')])
+    assert error.value.code==2 and 'require --offline-demo' in capsys.readouterr().err
+    assert not (tmp_path/'do-not-create.db').exists()
+
+
+def test_offline_service_refuses_non_loopback_even_with_inherited_tokens(tmp_path,monkeypatch,capsys):
+    from researchrelay.cli import main as cli
+    monkeypatch.setenv('RESEARCHRELAY_TOKENS','{"private-team-token":"human"}')
+    with pytest.raises(SystemExit) as error:
+        cli(['serve','--offline-demo','--db',str(tmp_path/'offline.db'),'--repo',str(tmp_path/'record'),'--host','0.0.0.0'])
+    assert error.value.code==2 and 'before binding to a non-loopback' in capsys.readouterr().err

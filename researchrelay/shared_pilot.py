@@ -169,7 +169,7 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
         alice_content = prepared(alice_result,f"pilot-alice-{run_id}","source_note")
         def publish(session,ctx,path,content,key,agent):
             old = next((document for document in ctx["documents"] if document["path"]==path),None)
-            return session.post("project/publish",json={"base_commit":ctx["sync"]["latest_commit"],
+            return session.post("project/publish",json={"expected_repository":ctx["repository"],"base_commit":ctx["sync"]["latest_commit"],
                 "changes":[{"path":path,"content":content,"expected_sha256":old["sha256"] if old else None}],
                 "agent":agent,"request_id":key,"message":"Literature pilot: attributed participant handoff"})
         first_publication = publish(alice,initial,alice_path,alice_content,f"alice-{run_id}",alice_result["metadata"]["producing_agent"])

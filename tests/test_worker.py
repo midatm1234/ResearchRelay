@@ -190,7 +190,7 @@ def test_gpt_worker_complete_context_result_review_and_shared_publication(tmp_pa
         assert reviewed.status_code==200,reviewed.text
         context=client.get('project/context').json()
         target='projects/agentic-collaboration/results/analysis-v1.md'
-        published=client.post('project/publish',json={'base_commit':context['sync']['latest_commit'],
+        published=client.post('project/publish',json={'base_commit':context['sync']['latest_commit'],'expected_repository':context['repository'],
              'changes':[{'path':target,'content':content,'expected_sha256':None}],
              'agent':metadata['producing_agent'],'request_id':'alice-result-1','message':'Record independently reviewed finding'})
         assert published.status_code==200,published.text
@@ -200,7 +200,7 @@ def test_gpt_worker_complete_context_result_review_and_shared_publication(tmp_pa
              'responsible_participant':'bob','producing_agent':'review-fixture/1','relations':[{'type':'reviews','target':'result-analysis'}],
              'provenance':{'input_commit':bob_context['sync']['latest_commit']},'task_id':'analysis','result_ref':{'id':'result-analysis','version':1},
              'verdict':'approve','rationale':'Source linkage and limitations verified.'},'# Independent review\n\nNo productivity or generalization claim follows from the synthetic fixture.')
-        subsequent=client.post('project/publish',headers=bob,json={'base_commit':bob_context['sync']['latest_commit'],
+        subsequent=client.post('project/publish',headers=bob,json={'base_commit':bob_context['sync']['latest_commit'],'expected_repository':bob_context['repository'],
              'changes':[{'path':'projects/agentic-collaboration/reviews/analysis.md','content':review,'expected_sha256':None}],
              'agent':'review-fixture/1','request_id':'bob-review-1','message':'Record independent extension/review'})
         assert subsequent.status_code==200,subsequent.text
@@ -211,7 +211,7 @@ def test_gpt_worker_complete_context_result_review_and_shared_publication(tmp_pa
         # An exact saved successful submission remains replayable after inputs change.
         source_document=next(document for document in latest['documents'] if document['path']=='projects/agentic-collaboration/source.md')
         updated_source=render_knowledge({**source_document['metadata'],'version':2},'# Updated source\n\nNew synthetic calibration evidence.')
-        correction=client.post('project/publish',json={'base_commit':latest['sync']['latest_commit'],
+        correction=client.post('project/publish',json={'base_commit':latest['sync']['latest_commit'],'expected_repository':latest['repository'],
              'changes':[{'path':source_document['path'],'content':updated_source,'expected_sha256':source_document['sha256']}],
              'agent':source_document['metadata']['producing_agent'],'request_id':'alice-source-correction','message':'Correct source evidence'})
         assert correction.status_code==200,correction.text

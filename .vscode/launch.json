@@ -17,6 +17,24 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.env",
       "justMyCode": true
+    },
+    {
+      "name": "ResearchRelay: offline demo service",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "researchrelay",
+      "args": [
+        "serve",
+        "--offline-demo",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "justMyCode": true
     }
   ]
 }

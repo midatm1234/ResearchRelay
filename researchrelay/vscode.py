@@ -40,6 +40,25 @@ When finished, run the workspace task 'ResearchRelay: hand off report', which va
 
 The worker terminal must remain open to renew the claim. Its printed resume_handoff path is private state outside this editor worktree. Restart using --resume-handoff before lease expiry if the worker stops. After timeout, cancellation, lease expiry, or stale inputs, retain the local report and ask the coordinator to reconcile/retry; a new attempt needs fresh context and explicit reuse of any still-valid findings. Review and human scientific decisions remain separate.
 """
+    project = context.get('project',{})
+    repository = project.get('repository')
+    authority = {'repository':repository.get('url') if repository else None,
+                 'branch':repository.get('branch') if repository else None,
+                 'knowledge_path':repository.get('knowledge_path') if repository else None,
+                 'retrieved_commit':project.get('sync',{}).get('latest_commit'),
+                 'sync_status':project.get('sync',{}).get('status','disabled')}
+    (exchange/'knowledge-source.json').write_text(json.dumps(authority,indent=2),encoding='utf-8')
+    source_guidance = ('The following resolved project binding is the authoritative shared knowledge source. '
+                       'A coordinator-selected repository or branch overrides the application default. '
+                       'The branch currently checked out in an application/editor checkout does not select the knowledge branch. '
+                       'Use the supplied committed documents and pinned task inputs; do not substitute files from a local main branch. '
+                       'The worker retrieved this context before claiming the task. Authentication or synchronization errors must be resolved explicitly, '
+                       'never hidden by falling back to bundled example notes.') if repository else (
+                       'This is an explicitly unbound local/offline handoff. There is no configured GitHub knowledge source or claim of current remote knowledge. '
+                       'Use only the approved local task and supplied evidence.')
+    banner = ('# ResearchRelay editor handoff\n\n## Authoritative knowledge source\n\n'+source_guidance+
+              '\n\n```json\n'+json.dumps(authority,indent=2).replace('`','\\u0060')+'\n```\n\n')
+    instructions = banner+instructions.split('\n\n',1)[1]
     (exchange/'AGENT_INSTRUCTIONS.md').write_text(instructions,encoding='utf-8')
     inputs = exchange/'inputs'
     inputs.mkdir(exist_ok=True)
@@ -55,7 +74,7 @@ The worker terminal must remain open to renew the claim. Its printed resume_hand
             'args':['-m','researchrelay.vscode','ready','--workspace','${workspaceFolder}'],
             'problemMatcher':[]}]}},indent=2),encoding='utf-8')
     return {'workspace_file':str(workspace_file),'instructions':str(exchange/'AGENT_INSTRUCTIONS.md'),
-            'report':str(exchange/'report.json')}
+            'report':str(exchange/'report.json'),'knowledge_source':authority}
 
 
 def open_editor(workspace_file):

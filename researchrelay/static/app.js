@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 const state = { dashboard: null, filter: 'all', search: '', meeting: null, pollBusy: false,
-  seen: Number(localStorage.getItem('researchrelay:last-seen') || 0), pilotBusy: false, project: null, documents: [], contextCommit: null, knowledgeBusy: false, profile: null };
+  seen: Number(localStorage.getItem('researchrelay:last-seen') || 0), pilotBusy: false, project: null, documents: [], contextCommit: null, contextBinding: null, knowledgeContext: null, activeDraft: null, knowledgeBusy: false, profile: null };
 let toastTimer;
 
 function node(tag, attrs = {}, children = []) {
@@ -142,18 +142,18 @@ function render(data) {
     try { detail = typeof detail === 'string' ? JSON.parse(detail) : detail; } catch { /* Show the original detail. */ }
     notice(`Pilot needs attention: ${asText(failedJob.error || detail?.error || failedJob.detail || 'Inspect the server log and retry.')}`, true);
   }
-  const localMode = data.mode || 'local demo';
+  const localMode = data.mode || 'live';
   $('footer-state').textContent = `${cap(localMode)} · SQLite is the authoritative workflow record.`;
   const isDemo = ['demo', 'local demo', 'local_demo'].includes(localMode);
   $('pilot-button').hidden = !isDemo;
-  clear(document.querySelector('.local-badge'), [node('span', { class: 'live-dot' }), isDemo ? 'LOCAL DEMO' : 'PROJECT SERVICE']);
+  clear(document.querySelector('.local-badge'), [node('span', { class: 'live-dot' }), isDemo ? 'OFFLINE DEMO' : 'PROJECT SERVICE']);
   if (state.project) renderSharedProject(state.project);
 }
 
 function renderDecisions(decisions) {
   if (!decisions.length) {
     const complete = state.dashboard?.tasks?.some(task => task.status === 'completed');
-    clear($('decision-section'), [node('div', { class: 'decision-empty' }, [node('span', { class: 'empty-icon', text: '◇' }), node('div', {}, [node('h2', { text: complete ? 'The next move belongs to the science.' : 'A shared record. A clearer next step.' }), node('p', { text: complete ? 'No open human decisions. Review the evidence and record what the team should do next.' : 'Run the literature pilot or turn your meeting notes into an agreed scope of work.' })])])]);
+    clear($('decision-section'), [node('div', { class: 'decision-empty' }, [node('span', { class: 'empty-icon', text: '◇' }), node('div', {}, [node('h2', { text: complete ? 'The next move belongs to the science.' : 'A shared record. A clearer next step.' }), node('p', { text: complete ? 'No open human decisions. Review the evidence and record what the team should do next.' : (state.dashboard.project?.repository ? 'Review the shared knowledge and turn meeting notes into approved tasks for your agents.' : 'Run the literature pilot or turn your meeting notes into an agreed scope of work.') })])])]);
     return;
   }
   clear($('decision-section'), decisions.map((decision, index) => {
@@ -438,12 +438,22 @@ function projectCommit(project = state.project) { return project?.sync?.latest_c
 function readableProject(project) { return project?.project_id === 'agentic-collaboration' ? 'Collaborative science with agentic AI' : cap((project?.project_id || '').replaceAll('-', ' ')); }
 function newRequestId() { return globalThis.crypto?.randomUUID ? crypto.randomUUID() : `publication-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 function field(label, input) { return node('div', { class: 'shared-field' }, [node('label', { text: label }), input]); }
+function repositoryKey(project) {
+  const repository = project?.repository;
+  return repository ? JSON.stringify([project.project_id, repository.url, repository.branch, repository.knowledge_path]) : null;
+}
+function discardKnowledgeContext(sourceChanged = false) {
+  if (sourceChanged) state.activeDraft?.markSourceChanged();
+  state.documents = []; state.contextCommit = null; state.contextBinding = null; state.knowledgeContext = null;
+  clear($('knowledge-list')); renderSourceCoverage();
+}
 async function refreshSharedProject(dashboard) {
   const project = dashboard.project || await api('/project');
   const previousCommit = state.contextCommit;
+  if (state.contextBinding && repositoryKey(project) !== state.contextBinding) discardKnowledgeContext(true);
   state.project = project;
   renderSharedProject(project);
-  if (project.repository && (!previousCommit || projectCommit(project) !== previousCommit) && !state.knowledgeBusy) await loadSharedContext();
+  if (project.repository && (!previousCommit || projectCommit(project) !== previousCommit || repositoryKey(project) !== state.contextBinding) && !state.knowledgeBusy) await loadSharedContext();
 }
 function renderSharedProject(project) {
   const repository = project.repository;
@@ -456,9 +466,11 @@ function renderSharedProject(project) {
   $('sync-project-button').disabled = !repository;
   $('knowledge-header').hidden = !repository;
   if (!repository) {
-    clear($('sync-details'), [node('p', { text: 'No shared repository is configured. The local pilot is available; configure a repository to collaborate with other participants.' })]);
+    const offline = state.dashboard?.mode === 'demo';
+    clear($('sync-details'), [node('p', { text: offline ? 'Offline demonstration. This local project does not retrieve or publish shared GitHub knowledge.' : 'No shared knowledge repository is configured. A project coordinator can connect a repository for collaboration.' })]);
+    $('workspace-caption').textContent = offline ? 'Offline demonstration' : 'Project service';
     clear($('knowledge-list'));
-    state.documents = []; state.contextCommit = null;
+    discardKnowledgeContext(Boolean(state.contextBinding));
   } else {
     const title = readableProject(project);
     $('project-title').textContent = title;
@@ -480,20 +492,25 @@ function renderSharedProject(project) {
 async function loadSharedContext() {
   if (state.knowledgeBusy) return;
   state.knowledgeBusy = true;
+  const requestedBinding = repositoryKey(state.project);
   try {
     const context = await api('/project/context');
+    if (requestedBinding !== repositoryKey(state.project) && repositoryKey(context) !== repositoryKey(state.project)) throw new Error('The project knowledge source changed during retrieval. Retrieve updates again before continuing.');
+    if (state.contextBinding && repositoryKey(context) !== state.contextBinding) discardKnowledgeContext(true);
     state.project = context;
-    state.documents = context.documents || [];
+    state.knowledgeContext = context;
+    state.documents = (context.documents || []).map(doc => ({...doc, _knowledgeBinding: repositoryKey(context)}));
     state.contextCommit = projectCommit(context);
+    state.contextBinding = repositoryKey(context);
     renderSharedProject(context);
     renderSharedKnowledge();
     return context;
   } finally { state.knowledgeBusy = false; }
 }
 function renderSharedKnowledge() {
+  renderSourceCoverage();
   if (!state.project?.repository) { clear($('knowledge-list')); return; }
   if (!state.documents.length) { clear($('knowledge-list'), [node('p', { class: 'knowledge-empty', text: 'No Markdown knowledge artifacts were retrieved from the configured project directory.' })]); return; }
-  renderSourceCoverage();
   const documents = [...state.documents].sort((a, b) => a.path.localeCompare(b.path));
   clear($('knowledge-list'), documents.map(doc => {
     const meta = doc.metadata || {};
@@ -537,7 +554,12 @@ function sharedTemplate(parent) {
   return { path: `${state.project.repository.knowledge_path}/${id}.md`, content, agent: producingAgent };
 }
 function editSharedDocument(document, parent) {
-  if (!state.contextCommit) { toast('Retrieve the project before preparing a contribution.', true); return; }
+  const observedContext = state.knowledgeContext;
+  const draftBinding = repositoryKey(observedContext);
+  if (!state.contextCommit || !draftBinding || draftBinding !== repositoryKey(state.project)) { toast('Retrieve the project before preparing a contribution.', true); return; }
+  if ((document || parent)?._knowledgeBinding && (document || parent)._knowledgeBinding !== draftBinding) { toast('This artifact belongs to a previous knowledge source. Retrieve and review the current project before creating a contribution.', true); return; }
+  const expectedRepository = {...observedContext.repository};
+  let sourceChanged = false;
   const fresh = document ? { path: document.path, content: document.content, agent: 'manual' } : sharedTemplate(parent);
   let baseCommit = document?.commit || state.contextCommit;
   let expectedHash = document?.sha256 || null;
@@ -554,13 +576,22 @@ function editSharedDocument(document, parent) {
     editor.value = setGeneratedRecord(editor.value, producingAgent.value);
   }
   producingAgent.addEventListener('change', () => { editor.value = setFrontMatterValue(editor.value, 'producing_agent', producingAgent.value.trim()); editor.value = setGeneratedRecord(editor.value, producingAgent.value.trim()); });
-  const pinned = node('p', { class: 'draft-pin', text: `Draft based on commit ${baseCommit.slice(0, 12)}. Incoming updates will not replace this draft.` });
+  const pinned = node('p', { class: 'draft-pin', text: `Draft targets ${expectedRepository.url} · ${expectedRepository.branch} · ${expectedRepository.knowledge_path}, commit ${baseCommit.slice(0, 12)}. Incoming updates will not replace this draft.` });
   const problem = node('div', { class: 'publish-problem', role: 'status', hidden: 'hidden' });
   const comparison = node('section', { class: 'publish-comparison' });
   const button = node('button', { type: 'submit', class: 'button primary', text: 'Publish contribution to GitHub' });
+  const markSourceChanged = () => {
+    if (!editor.isConnected) return;
+    sourceChanged = true; button.disabled = true;
+    pinned.textContent = `Original target: ${expectedRepository.url} · ${expectedRepository.branch} · ${expectedRepository.knowledge_path}. This draft has not been retargeted.`;
+    problem.hidden = false;
+    problem.textContent = 'Project knowledge source changed. Your draft is preserved. Copy your text, retrieve and review the current project, then create a new contribution with the appropriate path and metadata. This draft cannot publish to the new target.';
+    clear(comparison);
+  };
   const compareButton = node('button', { type: 'button', class: 'button secondary', text: 'Retrieve latest for comparison', onclick: event => action(event.currentTarget, async () => {
     const latest = await loadSharedContext();
     if (!latest || !state.contextCommit || latest.sync?.error) throw new Error('Latest project information could not be retrieved. Resolve synchronization first.');
+    if (repositoryKey(latest) !== draftBinding) { markSourceChanged(); return; }
     const reviewedCommit = projectCommit(latest);
     const remote = state.documents.find(item => item.path === path.value.trim());
     const accept = node('input', { type: 'checkbox', required: 'required', 'aria-label': 'I reconciled my draft with the latest committed file' });
@@ -568,6 +599,7 @@ function editSharedDocument(document, parent) {
     rebase.disabled = true;
     accept.addEventListener('change', () => { rebase.disabled = !accept.checked; });
     rebase.addEventListener('click', () => {
+      if (repositoryKey(state.project) !== draftBinding) { markSourceChanged(); return; }
       baseCommit = reviewedCommit; expectedHash = remote?.sha256 || null; requestId = newRequestId();
       pinned.textContent = `Draft explicitly reconciled with commit ${baseCommit.slice(0, 12)}. Your text was preserved.`;
       problem.hidden = true; clear(comparison); toast('Reviewed base updated. Inspect your draft before publishing again.');
@@ -576,10 +608,11 @@ function editSharedDocument(document, parent) {
   }) });
   const form = node('form', { class: 'shared-publish-form', onsubmit: event => {
     event.preventDefault();
+    if (sourceChanged || repositoryKey(state.project) !== draftBinding) { markSourceChanged(); return; }
     action(button, async () => {
       problem.hidden = true;
       try {
-        const result = await api('/project/publish', 'POST', { base_commit: baseCommit, changes: [{ path: path.value.trim(), content: editor.value, expected_sha256: expectedHash }], agent: producingAgent.value.trim(), request_id: requestId, message: message.value.trim() });
+        const result = await api('/project/publish', 'POST', { base_commit: baseCommit, expected_repository: expectedRepository, changes: [{ path: path.value.trim(), content: editor.value, expected_sha256: expectedHash }], agent: producingAgent.value.trim(), request_id: requestId, message: message.value.trim() });
         $('detail-dialog').close(); toast(`Contribution published at ${(result.commit || '').slice(0, 12)}.`); await loadSharedContext(); await refresh(true);
       } catch (error) {
         problem.hidden = false;
@@ -587,8 +620,9 @@ function editSharedDocument(document, parent) {
         if (error.payload?.next_action) problem.append(node('p', { text: error.payload.next_action }));
         if (error.status === 409) problem.append(compareButton);
       }
-    });
+    }).finally(() => { if (sourceChanged) button.disabled = true; });
   } }, [field('Repository Markdown path', path), field('Producing agent (attributed in the project record)', producingAgent), field('Commit message', message), pinned, node('p', { class: 'section-intro', text: 'Prefer a new review or extension when contributing to someone else’s finding. Preserve citations and provenance, and update metadata to identify your contribution. Use manual for text you write here; name an AI agent only if it actually produced the contribution. Publication follows repository permissions and never force-pushes.' }), field('Portable Markdown with YAML metadata', editor), problem, comparison, node('div', { class: 'detail-buttons' }, [button])]);
+  state.activeDraft = {markSourceChanged};
   openDetail(document ? 'Revise a shared artifact' : 'Publish a shared contribution', 'EXPLICIT ATTRIBUTION · CONCURRENT CHANGES CHECKED', [form]);
 }
 async function showAgentProfile() {
@@ -629,7 +663,7 @@ function configureSharedRepository() {
   const form = node('form', { class: 'repository-config-form', onsubmit: event => {
     event.preventDefault();
     action(button, async () => { await api('/project/repository','PUT',{url:url.value.trim(),branch:branch.value.trim(),knowledge_path:path.value.trim()}); $('detail-dialog').close(); state.contextCommit = null; await loadSharedContext(); await refresh(true); toast('Shared repository configured and current information retrieved.'); });
-  } }, [node('p', { class: 'section-intro', text: `This service coordinates project ${state.project?.project_id || ''}. Its Git credentials must have permission for the repository. Use a shared working branch that follows your repository’s review policy. Configure project identity and participant tokens on the service host.` }), field('Repository URL',url),field('Branch',branch),field('Knowledge directory inside the repository',path),button]);
+  } }, [node('p', { class: 'section-intro', text: `This service coordinates project ${state.project?.project_id || ''}. Its Git credentials must have permission for the repository. Use a shared working branch that follows your repository’s review policy. This knowledge source applies to every participant in the current project. Use a separate project for another person or group; only its coordinator should change this binding. Configure project identity and participant tokens on the service host.` }), field('Repository URL',url),field('Branch',branch),field('Knowledge directory inside the repository',path),button]);
   openDetail('Connect a GitHub project', 'COORDINATOR CONFIGURATION', [form]);
 }
 $('sync-project-button').addEventListener('click', event => action(event.currentTarget,retrieveSharedUpdates));
@@ -641,12 +675,15 @@ function renderSourceCoverage() {
   const destination = $('source-evidence-table');
   if (!destination) return;
   let review;
-  for (const job of state.dashboard?.jobs || []) {
-    try { const data = typeof job.data === 'string' ? JSON.parse(job.data) : job.data; if (data?.literature_review?.source_notes?.length) review = data.literature_review; } catch { /* Keep current evidence. */ }
-  }
-  for (const artifact of state.dashboard?.artifacts || []) {
-    const evidence = artifact.metadata?.evidence;
-    if (artifact.metadata?.task_id === 'literature-synthesis' && evidence?.source_notes?.length) review = evidence;
+  const shared = Boolean(state.project?.repository || state.dashboard?.project?.repository);
+  if (!shared) {
+    for (const job of state.dashboard?.jobs || []) {
+      try { const data = typeof job.data === 'string' ? JSON.parse(job.data) : job.data; if (data?.literature_review?.source_notes?.length) review = data.literature_review; } catch { /* Keep current evidence. */ }
+    }
+    for (const artifact of state.dashboard?.artifacts || []) {
+      const evidence = artifact.metadata?.evidence;
+      if (artifact.metadata?.task_id === 'literature-synthesis' && evidence?.source_notes?.length) review = evidence;
+    }
   }
   let sources = review?.source_notes || [];
   if (!sources.length) sources = state.documents.filter(doc => doc.metadata?.artifact_type === 'source_note' && doc.metadata?.bibliography).map(doc => ({
@@ -657,14 +694,14 @@ function renderSourceCoverage() {
   }));
   if (!sources.length) {
     $('source-count').textContent = 'Not loaded';
-    $('source-coverage-summary').textContent = 'Run the literature pilot or retrieve the shared source notes to inspect their publication status and access limits.';
+    $('source-coverage-summary').textContent = shared ? 'Retrieve committed source notes with bibliography metadata to inspect publication status and access limits. Cached offline pilot evidence is kept separate.' : 'Run the offline literature pilot to inspect source-note publication status and access limits.';
     clear($('source-status-counts')); clear(destination); return;
   }
   const counts = {};
   sources.forEach(source => { const kind = source.publication_status || 'unclassified'; counts[kind] = (counts[kind] || 0) + 1; });
   $('source-count').textContent = `${sources.length} source notes`;
   const date = review?.search_date || sources.find(source => source.search_date)?.search_date;
-  $('source-coverage-summary').textContent = `${date ? `Search record: ${date}. ` : ''}Coverage is read from the verified note metadata. Publication status and inspected access are distinct from scientific validation; the pilot does not perform a new live search.`;
+  $('source-coverage-summary').textContent = `${date ? `Search record: ${date}. ` : ''}Coverage is read from recorded note metadata. Publication status and inspected access are distinct from scientific validation; retrieving this table does not perform a new search.`;
   const labels = { published_paper: 'Published papers', preprint: 'Preprints', specification: 'Specifications', software_documentation: 'Software documentation', unclassified: 'Unclassified' };
   clear($('source-status-counts'), Object.entries(counts).map(([kind,count]) => node('span', { class: 'status-badge', text: `${labels[kind] || cap(kind)}: ${count}` })));
   const rows = sources.map(source => {

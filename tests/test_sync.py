@@ -63,7 +63,7 @@ def context(shared,identity="alice"):
 
 def payload(ctx,path,content,key):
     previous = next((d for d in ctx["documents"] if d["path"]==path),None)
-    return dict(base_commit=ctx["sync"]["latest_commit"],changes=[dict(path=path,content=content,
+    return dict(expected_repository=ctx["repository"],base_commit=ctx["sync"]["latest_commit"],changes=[dict(path=path,content=content,
                 expected_sha256=previous["sha256"] if previous else None)],
                 agent="test-agent/1.0",request_id=key,message="Publish attributed research contribution")
 
@@ -178,7 +178,7 @@ def test_profiles_and_publications_are_scoped_and_do_not_accept_secrets(shared):
 def test_shared_result_rejects_changed_input_document(shared):
     first = context(shared)
     original = next(d for d in first["documents"] if d["path"].endswith("/finding.md"))
-    metadata = {"project_context":{"commit":first["sync"]["latest_commit"],
+    metadata = {"project_context":{"repository":shared["sync"].binding,"commit":first["sync"]["latest_commit"],
                                   "documents":[{"path":original["path"],"sha256":original["sha256"]}]}}
     shared["sync"].check_inputs(metadata)
     response = publish(shared,"alice",payload(first,original["path"],note(version=2,body="New evidence"),"new-evidence"))
@@ -228,7 +228,7 @@ def test_duplicate_document_changes_are_rejected_before_publication(shared, seco
 def test_result_context_cannot_invent_a_commit_with_current_document_hashes(shared):
     first = context(shared)
     original = next(d for d in first["documents"] if d["path"].endswith("/finding.md"))
-    metadata = {"project_context": {"commit": "0" * 40,
+    metadata = {"project_context": {"repository":shared["sync"].binding,"commit": "0" * 40,
                 "documents": [{"path": original["path"], "sha256": original["sha256"]}]}}
     with pytest.raises(SyncError, match="commit") as failure:
         shared["sync"].check_inputs(metadata)
@@ -242,7 +242,7 @@ def test_result_hash_must_belong_to_its_declared_commit(shared):
     assert changed.status_code == 200, changed.text
     current = next(d for d in context(shared)["documents"] if d["path"].endswith("/finding.md"))
     # Matching latest content does not establish that an older declared snapshot contained it.
-    metadata = {"project_context": {"commit": first["sync"]["latest_commit"],
+    metadata = {"project_context": {"repository":shared["sync"].binding,"commit": first["sync"]["latest_commit"],
                 "documents": [{"path": current["path"], "sha256": current["sha256"]}]}}
     with pytest.raises(SyncError, match="declared project commit") as failure:
         shared["sync"].check_inputs(metadata)
@@ -383,4 +383,23 @@ def test_nontext_context_commit_is_a_validation_error(shared):
     first=context(shared)
     document=first["documents"][0]
     with pytest.raises(SyncError,match="exact commit"):
-        shared["sync"].check_inputs({"project_context":{"commit":42,"documents":[{"path":document["path"],"sha256":document["sha256"]}]}})
+        shared["sync"].check_inputs({"project_context":{"repository":shared["sync"].binding,"commit":42,"documents":[{"path":document["path"],"sha256":document["sha256"]}]}})
+
+
+def test_disabling_fallback_hides_inactive_cache_but_preserves_accepted_acknowledgment(shared,monkeypatch):
+    ctx = context(shared)
+    draft = payload(ctx,f"{PREFIX}/accepted-before-disable.md",note(identifier="before-disable"),"before-disable")
+    accepted = publish(shared,"alice",draft)
+    assert accepted.status_code == 200
+    shared["settings"].github_url = None
+    restarted = ProjectSync(shared["settings"],Engine(shared["engine"].db_path,PROJECT))
+    def no_fetch():
+        raise AssertionError("An explicitly disabled knowledge source must not fetch Git")
+    monkeypatch.setattr(restarted,"_fetch",no_fetch)
+    inactive = restarted.context("alice")
+    assert inactive["repository"] is None and inactive["documents"] == []
+    assert inactive["sync"]["status"] == "disabled" and inactive["sync"]["latest_commit"] is None
+    assert restarted.publish("alice",**draft) == accepted.json()
+    with pytest.raises(SyncError,match="no configured GitHub"):
+        restarted.publish("alice",**{**draft,"request_id":"new-after-disable"})
+    assert git(shared["remote"],"rev-parse",f"refs/heads/{BRANCH}") == accepted.json()["commit"]

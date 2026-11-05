@@ -56,7 +56,7 @@ from the execution task ID (the service's task definition ID is `task-<task-id>`
 Schema examples are in `examples/artifacts/`; executed literature records are in
 `examples/literature-record/`. The verified literature corpus lives in `projects/agentic-collaboration/sources/`,
 with its index, search record, synthesis, questions, and proposed tasks alongside
-it. Running `researchrelay demo` creates fresh versioned execution records from
+it. Running `researchrelay demo --offline` creates fresh versioned execution records from
 these notes. The workflow result records data/code/configuration/environment
 hashes and the precise source-note snapshot; no live search or model execution
 is implied. Shared knowledge uses the selected OKF 0.2 specification and a

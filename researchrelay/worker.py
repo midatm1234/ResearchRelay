@@ -120,9 +120,10 @@ class Worker:
         try:
             if resumed:
                 context_before = resumed['context']
-                if (task.get('stale_inputs') or self._context_pins(current_project)['documents'] != self._context_pins(context_before['project'])['documents']
+                if (task.get('stale_inputs') or current_project.get('repository') != context_before['project'].get('repository')
+                        or self._context_pins(current_project)['documents'] != self._context_pins(context_before['project'])['documents']
                         or task.get('input_refs',[]) != context_before['task'].get('input_refs',[])):
-                    raise ProviderError('Shared inputs changed during the editor handoff; reconcile the new context and retry instead of submitting stale findings', 'stale_inputs')
+                    raise ProviderError('Shared inputs changed or the knowledge repository/branch/path was reconfigured during the editor handoff; reconcile the new context and retry instead of submitting stale findings', 'stale_inputs')
                 project = context_before['project']
                 isolation = resumed['isolation']
             else:
@@ -328,7 +329,7 @@ class Worker:
 
     @staticmethod
     def _context_pins(project):
-        return {'commit':project.get('sync',{}).get('latest_commit'),
+        return {'repository':project.get('repository'),'commit':project.get('sync',{}).get('latest_commit'),
                 'documents':[{'path':document['path'],'sha256':document['sha256']}
                              for document in project.get('documents',[])]}
 
@@ -446,6 +447,7 @@ class Worker:
     def _claude(self, workspace: Path, lost: threading.Event) -> None:
         prompt = (
             "Execute the authorized scientific task in .researchrelay-exchange/task-context.json using the pinned input artifact versions. "
+            "The project.repository url, branch, and knowledge_path identify the authoritative shared knowledge source; the local application checkout branch does not. "
             "Work only in this worktree and within acceptance criteria. Do not change scope or publish/merge. "
             "Write .researchrelay-exchange/result.md as Markdown with YAML front matter matching .researchrelay-exchange/context-schema.json. "
             "Use artifact ID result-{task.id}, project_id from task, version task.revision_count+1. "

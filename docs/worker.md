@@ -62,7 +62,7 @@ The configured origin must match `TEAM/PROJECT`. This path needs the participant
 
 ## Local literature workflow and evaluation
 
-`researchrelay demo` runs the deterministic literature-note pilot with real SQLite and Git. Alice and Bob process separate source groups concurrently; their reviewed inputs feed a synthesis. Carol requests explicit publication/access limitations, Alice revises, and a human receives the next-search question. The 12-source seed, meeting notes, and example records are in [the project bundle](../projects/agentic-collaboration), [meeting notes](../examples/meeting-notes.txt), and [literature records](../examples/literature-record). This run performs no fresh search or live model inference.
+`researchrelay demo --offline` runs the deterministic literature-note pilot with real SQLite and Git. Alice and Bob process separate source groups concurrently; their reviewed inputs feed a synthesis. Carol requests explicit publication/access limitations, Alice revises, and a human receives the next-search question. The 12-source seed, meeting notes, and example records are in [the project bundle](../projects/agentic-collaboration), [meeting notes](../examples/meeting-notes.txt), and [literature records](../examples/literature-record). This run performs no fresh search or live model inference.
 
 Rerunning the demo against the same database/repository resumes supported stages and avoids duplicate submissions/reviews/decisions. A still-running claim must expire before a new attempt; the default lease is 120 seconds. Blocked or canceled work requires explicit participant action.
 

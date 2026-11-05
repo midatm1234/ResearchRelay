@@ -15,7 +15,11 @@ def main(argv: list[str] | None = None) -> None:
     serve = commands.add_parser("serve", help="Start the local coordinator and dashboard")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--offline-demo",action="store_true",help="Serve an explicitly offline cached literature demo in isolated local state")
+    serve.add_argument("--db",help="Offline-demo SQLite path; requires --offline-demo")
+    serve.add_argument("--repo",help="Offline-demo local record path; requires --offline-demo")
     demo = commands.add_parser("demo", help="Run the credential-free local scientific pilot")
+    demo.add_argument("--offline",action="store_true",help="Use isolated local demo state without a GitHub binding")
     demo.add_argument("--db", help="New SQLite file for an independent pilot")
     demo.add_argument("--repo", help="Local project record repository")
     literature = commands.add_parser("literature-pilot",help="Run two participant agents against verified literature and a real Git remote")
@@ -97,11 +101,25 @@ def main(argv: list[str] | None = None) -> None:
         from .shared_pilot import run_shared_pilot
         print(json.dumps(run_shared_pilot(args.remote,args.branch,args.workspace,args.live),indent=2))
         return
+    offline = ((args.command=='serve' and args.offline_demo)
+               or (args.command=='demo' and args.offline))
+    if args.command=='serve' and (args.db or args.repo) and not args.offline_demo:
+        parser.error('serve --db/--repo require --offline-demo; configure the normal project through its environment or project API')
+    if offline:
+        os.environ.update(RESEARCHRELAY_MODE='demo',RESEARCHRELAY_GITHUB_URL='',
+                          RESEARCHRELAY_PROJECT='agentic-collaboration',RESEARCHRELAY_TOKENS='{}',
+                          RESEARCHRELAY_DB=args.db or '.runtime/offline-demo/state.db',
+                          RESEARCHRELAY_REPO=args.repo or '.runtime/offline-demo/project-record')
     from .config import Settings
     settings = Settings()
     if args.command == "demo" and (settings.mode != "demo" or settings.github_url):
-        parser.error("The cached literature demo requires RESEARCHRELAY_MODE=demo and an unbound repository; select a separate demo database/repository")
+        parser.error("The cached literature demo requires RESEARCHRELAY_MODE=demo and an unbound repository; run researchrelay demo --offline with a separate demo database/repository")
     if args.command == "serve":
+        if args.offline_demo:
+            from .engine import Engine
+            from .sync import ProjectSync
+            if ProjectSync(settings,Engine(settings.db_path,project_id=settings.project_id)).binding:
+                parser.error('Offline service requires an unbound database; this database has a saved shared repository. Choose a separate --db/--repo; its saved binding was preserved')
         if args.host not in {"127.0.0.1", "localhost", "::1"} and not settings.tokens:
             parser.error("Configure project-scoped RESEARCHRELAY_TOKENS before binding to a non-loopback interface")
         import uvicorn
@@ -189,6 +207,9 @@ def _shared_command(args):
                 Path(args.output).expanduser().write_text(json.dumps(context,indent=2),encoding='utf-8')
             return context
         context = json.loads(Path(args.context).expanduser().read_text(encoding='utf-8'))
+        repository = context.get('repository')
+        if not isinstance(repository,dict) or not all(isinstance(repository.get(key),str) and repository[key] for key in ('url','branch','knowledge_path')):
+            raise ValueError('Saved context has no valid repository binding; retrieve fresh project context and review the intended repository, branch, and knowledge directory before publishing')
         base_commit = context.get('sync',{}).get('latest_commit')
         if not base_commit:
             raise ValueError('Saved context has no synchronized commit; configure a repository and retrieve context first')
@@ -200,9 +221,9 @@ def _shared_command(args):
         agent = args.agent or metadata.get('producing_agent') or 'manual/'+str(context.get('participant','participant'))
         previous = next((document for document in context.get('documents',[]) if document['path']==args.path),None)
         changes = [{'path':args.path,'content':content,'expected_sha256':previous['sha256'] if previous else None}]
-        identity = [context.get('participant'),base_commit,changes,agent]
+        identity = [context.get('participant'),repository,base_commit,changes,agent]
         request_id = args.request_id or 'cli-'+hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest()[:32]
-        return request('POST','project/publish',{'base_commit':base_commit,'changes':changes,'agent':agent,
+        return request('POST','project/publish',{'base_commit':base_commit,'expected_repository':repository,'changes':changes,'agent':agent,
                        'request_id':request_id,'message':args.message})
 
 

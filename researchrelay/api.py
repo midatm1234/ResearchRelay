@@ -136,6 +136,7 @@ class KnowledgeChange(Payload):
 
 
 class KnowledgePublication(Payload):
+    expected_repository: SharedRepository
     base_commit: str
     changes: list[KnowledgeChange] = Field(min_length=1,max_length=30)
     agent: str = Field(min_length=1,max_length=200)
@@ -288,13 +289,16 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
             with coordinator._tx() as db:
                 return db.execute("SELECT 1 FROM submissions WHERE task_id=? AND key=?",
                                   (task_id,data.idempotency_key)).fetchone() is not None
-        try:
-            if not previously_accepted():
-                synchronizer.check_inputs(data.artifact.metadata)
-        except SyncError:
-            if not previously_accepted():
-                raise
-        response = coordinator.submit_result(task_id,**data.model_dump())
+        # Configuration and new submissions share a single source snapshot.
+        # A rebind cannot slip between input validation and durable completion.
+        with synchronizer._lock:
+            try:
+                if not previously_accepted():
+                    synchronizer.check_inputs(data.artifact.metadata)
+            except SyncError:
+                if not previously_accepted():
+                    raise
+            response = coordinator.submit_result(task_id,**data.model_dump())
         response['task'] = public_task(response['task'])
         return response
 
@@ -459,4 +463,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
     return app
 
 
-app = create_app()
+def __getattr__(name):
+    # Keep uvicorn's existing api:app entry point while making imports safe for
+    # tools/tests: opening a module must not initialize a user's live database.
+    if name == "app":
+        application = create_app()
+        globals()["app"] = application
+        return application
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

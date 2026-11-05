@@ -42,7 +42,8 @@ def main():
     server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
     thread = threading.Thread(target=server.serve_forever,daemon=True)
     thread.start()
-    state = {'commit':'a'*40,'profile':{'provider':'manual'},'publications':[],'syncs':0,'conflict':True}
+    state = {'commit':'a'*40,'profile':{'provider':'manual'},'publications':[],'syncs':0,'conflict':True,'mode':'live','context_reads':0,
+             'repository':{'url':'git@github.com:midatm1234/ResearchRelay.git','branch':'SRTD_DT_test','knowledge_path':'projects/agentic-collaboration'}}
     original = "---\nid: shared-note\nproject_id: agentic-collaboration\nschema_version: '1.0'\nartifact_type: synthesis\ntype: 'Research Synthesis'\nversion: 1\nresponsible_participant: alice\nproducing_agent: alice-agent\ncreated_at: '2026-11-04T12:00:00Z'\nupdated_at: '2026-11-04T12:00:00Z'\nformat_status: provisional\ncitations: []\nrelations: []\nprovenance:\n  method: browser-qa-fixture\n---\n\n# Shared evidence\n\nInitial finding.\n"
     document = {'path':'projects/agentic-collaboration/shared-note.md','content':original,
                 'sha256':hashlib.sha256(original.encode()).hexdigest(),
@@ -51,8 +52,8 @@ def main():
                 'body':'# Shared evidence','commit':state['commit']}
     def project(participant='human'):
         return {'project_id':'agentic-collaboration','participant':participant,
-                'repository':{'url':'git@github.com:example/research.git','branch':'SRTD_DT_test','knowledge_path':'projects/agentic-collaboration'},
-                'sync':{'status':'synced','latest_commit':state['commit'],'last_checked_at':'2026-11-04T12:00:00Z','error':None,'next_action':None},
+                'repository':state['repository'],
+                'sync':{'status':'synced' if state['repository'] else 'disabled','latest_commit':state['commit'],'last_checked_at':'2026-11-04T12:00:00Z','error':None,'next_action':None},
                 'format_status':'provisional'}
     def intercept(route):
         request=route.request
@@ -61,11 +62,15 @@ def main():
         payload=request.post_data_json if request.post_data else None
         status=200
         if path=='/api/dashboard':
-            result={'project_id':'agentic-collaboration','mode':'live','tasks':[],'artifacts':[],'decisions':[],
-                    'events':[],'metrics':[],'jobs':[],'latest_seq':0,'project':project(participant)}
+            result={'project_id':'agentic-collaboration','mode':state['mode'],'tasks':[],'artifacts':[],'decisions':[],
+                    'events':[],'metrics':[],'jobs':[{'id':'pilot','status':'completed','data':{'literature_review':{'source_notes':[{'id':'cached-fixture','title':'OLD OFFLINE QA SOURCE','publication_status':'preprint','access':'synthetic cached fixture'}]}}}],'latest_seq':0,'project':project(participant)}
         elif path=='/api/project':
             result=project(participant)
         elif path=='/api/project/context':
+            state['context_reads']+=1
+            if state.get('hold_context'):
+                state['pending_context']=route
+                return
             result={**project(participant),'documents':[document],'tasks':[],'artifacts':[]}
         elif path=='/api/project/sync':
             state['syncs']+=1
@@ -75,6 +80,7 @@ def main():
                 state['profile']=payload
             result={'participant':participant,'profile':state['profile']}
         elif path=='/api/project/publish':
+            assert payload['expected_repository']==state['repository'], 'Publication must pin its observed repository tuple'
             state['publications'].append(payload)
             if state['conflict']:
                 state['conflict']=False
@@ -111,9 +117,34 @@ def main():
             expect(page.locator('#knowledge-list')).to_contain_text('alice / alice-agent')
             expect(page.locator('#knowledge-format')).to_contain_text('Selected OKF 0.2')
             expect(page.locator('#pilot-button')).not_to_be_visible()
+            expect(page.locator('#source-count')).to_have_text('Not loaded')
+            expect(page.locator('#source-evidence-table')).not_to_contain_text('OLD OFFLINE QA SOURCE')
+            expect(page.locator('.local-badge')).to_contain_text('SHARED PROJECT')
+            expect(page.locator('#sync-details')).to_contain_text('git@github.com:midatm1234/ResearchRelay.git')
+            page.locator('#configure-project-button').click()
+            expect(page.get_by_role('textbox',name='Shared GitHub repository URL')).to_have_value(state['repository']['url'])
+            expect(page.get_by_role('textbox',name='Shared repository branch')).to_have_value('SRTD_DT_test')
+            expect(page.locator('#detail-content')).to_contain_text('every participant in the current project')
+            page.locator('#detail-dialog .close-dialog').click()
+            # The current team binding, rather than a hardcoded default, fills the form.
+            original_binding=state['repository']
+            page.wait_for_function('!state.pollBusy && !state.knowledgeBusy')
+            reads_before=state['context_reads']
+            state['repository']={**original_binding,'url':'git@github.com:example/team-knowledge.git','branch':'group-review'}
+            page.evaluate('refresh(true)')
+            expect(page.locator('#sync-details')).to_contain_text('example/team-knowledge.git')
+            assert state['context_reads']>reads_before, 'A changed binding must retrieve context even at the same commit'
+            page.locator('#configure-project-button').click()
+            expect(page.get_by_role('textbox',name='Shared GitHub repository URL')).to_have_value(state['repository']['url'])
+            expect(page.get_by_role('textbox',name='Shared repository branch')).to_have_value('group-review')
+            page.locator('#detail-dialog .close-dialog').click()
+            state['repository']=original_binding
+            page.locator('#refresh-button').click()
+            expect(page.locator('#sync-details')).to_contain_text('midatm1234/ResearchRelay.git')
+            syncs_before=state['syncs']
             page.locator('#sync-project-button').click()
             expect(page.locator('#sync-project-button')).to_be_enabled()
-            assert state['syncs']==1
+            assert state['syncs']==syncs_before+1
             # A connection profile stores only metadata and never pretends to run a model.
             page.locator('#agent-profile-button').click()
             assert page.get_by_role('textbox',name='Provider credential environment variable name').input_value()==''
@@ -163,19 +194,51 @@ def main():
             expect(page.locator('#detail-dialog')).not_to_be_visible()
             assert len(state['publications'])==2
             assert state['publications'][1]['request_id']!=original_request
+            # A same-commit repository change clears context and fences an open draft.
+            page.wait_for_function('!state.pollBusy && !state.knowledgeBusy')
+            page.locator('#new-contribution-button').click()
+            retained=page.get_by_role('textbox',name='Shared Markdown draft')
+            retained.fill(retained.input_value()+'\nRetain this text after the source changes.\n')
+            state['hold_context']=True
+            state['repository']={**original_binding,'url':'git@github.com:example/changed-target.git'}
+            with page.expect_request('**/api/project/context'):
+                page.evaluate('void refresh(true)')
+            expect(page.locator('.publish-problem')).to_contain_text('Project knowledge source changed')
+            expect(page.locator('#knowledge-list .knowledge-row')).to_have_count(0)
+            expect(page.get_by_role('button',name='Publish contribution to GitHub')).to_be_disabled()
+            assert 'Retain this text' in retained.input_value()
+            assert len(state['publications'])==2
+            state['hold_context']=False
+            state.pop('pending_context').fulfill(status=200,content_type='application/json',body=json.dumps({**project(),'documents':[document],'tasks':[],'artifacts':[]}))
+            page.wait_for_function('!state.pollBusy && !state.knowledgeBusy')
+            expect(page.get_by_role('button',name='Publish contribution to GitHub')).to_be_disabled()
+            state['repository']=original_binding
+            page.evaluate('refresh(true)')
+            expect(page.get_by_role('button',name='Publish contribution to GitHub')).to_be_disabled()
+            page.locator('#detail-dialog .close-dialog').click()
             # Change browser participant via its own session token.
             page.get_by_role('button',name='Access',exact=True).click()
             page.get_by_label('Project access token').fill('bob-project-token')
             page.get_by_role('button',name='Use for this browser session').click()
             expect(page.locator('#participant-label')).to_have_text('Bob')
             expect(page.locator('#configure-project-button')).not_to_be_visible()
+            # Only the explicit unbound demo advertises the local pilot.
+            state['repository']=None
+            page.locator('#refresh-button').click()
+            expect(page.locator('.local-badge')).to_contain_text('PROJECT SERVICE')
+            expect(page.locator('#pilot-button')).not_to_be_visible()
+            expect(page.locator('#sync-details')).to_contain_text('No shared knowledge repository')
+            state['mode']='demo'
+            page.locator('#refresh-button').click()
+            expect(page.locator('.local-badge')).to_contain_text('OFFLINE DEMO')
+            expect(page.locator('#pilot-button')).to_be_visible()
             page.set_viewport_size({'width':390,'height':844})
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             assert not errors,errors
             browser.close()
         print(json.dumps({'status':'passed','mode':'mocked-backend browser UI','checks':[
-            'repository commit and attribution','forced update retrieval','own profile metadata','unauthenticated local-provider profile','VS Code handoff metadata and instructions','stale publication draft preservation',
-            'explicit reconciliation and normal retry','participant token switch','mobile layout'],'page_errors':errors}))
+            'repository commit and attribution','default shared source and preserved custom form binding','binding changes reload the same commit','shared knowledge excludes cached offline coverage','changed target clears context and preserves a fenced draft','publication pins observed repository','forced update retrieval','own profile metadata','unauthenticated local-provider profile','VS Code handoff metadata and instructions','stale publication draft preservation',
+            'explicit reconciliation and normal retry','participant token switch','explicit offline vs unbound service labels','mobile layout'],'page_errors':errors}))
     finally:
         server.shutdown();server.server_close();thread.join(timeout=5)
 
@@ -266,7 +329,7 @@ def local_git_main():
                     page.get_by_role('button',name='Access',exact=True).click()
                     page.get_by_label('Project access token').fill('ui-bob-token')
                     page.get_by_role('button',name='Use for this browser session').click()
-                    expect(page.locator('#participant-label')).to_have_text('Bob')
+                    expect(page.locator('#participant-label')).to_have_text('Bob',timeout=30_000)
                     page.locator('#sync-project-button').click()
                     expect(page.locator('#sync-project-button')).to_be_enabled(timeout=30_000)
                     expect(page.locator('#sync-status')).to_contain_text('Synced',timeout=30_000)

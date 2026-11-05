@@ -17,11 +17,28 @@
       }
     },
     {
-      "label": "ResearchRelay: run literature demo",
+      "label": "ResearchRelay: start offline demo service",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
       "args": [
         "-m",
         "researchrelay",
-        "demo"
+        "serve",
+        "--offline-demo"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "ResearchRelay: run offline literature demo",
+      "args": [
+        "-m",
+        "researchrelay",
+        "demo",
+        "--offline"
       ],
       "type": "process",
       "command": "${command:python.interpreterPath}",

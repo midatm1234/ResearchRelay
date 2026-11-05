@@ -60,7 +60,7 @@ def wait_for(check, description, seconds=60):
 def main():
     checkout = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="ResearchRelay editor smoke ") as directory:
-        root = Path(directory)
+        root = Path(directory).resolve()  # macOS /var is an alias of /private/var
         seed = root/"seed"
         seed.mkdir()
         _git(seed, "init", "-b", BRANCH)
@@ -118,7 +118,7 @@ def main():
                             raise AssertionError("CLI worker exited before preparing the editor handoff")
                         return event
                     handoff = wait_for(handoff_event, "real CLI editor handoff")
-                    workspace = Path(handoff["workspace"])
+                    workspace = Path(handoff["workspace"]).resolve()
                     exchange = workspace/".researchrelay-exchange"
                     context = json.loads((exchange/"task-context.json").read_text(encoding="utf-8"))
                     source = next(document for document in context["project"]["documents"]
@@ -126,8 +126,8 @@ def main():
                     source_url = source["metadata"]["bibliography"]["url"]
                     assert context["project"]["sync"]["latest_commit"] and source["sha256"]
                     assert "claim_token" not in context["task"]
-                    private_path = Path(handoff["resume_handoff"])
-                    assert private_path.is_relative_to(clone/".git") and not private_path.is_relative_to(workspace)
+                    private_path = Path(handoff["resume_handoff"]).resolve()
+                    assert private_path.is_relative_to((clone/".git").resolve()) and not private_path.is_relative_to(workspace)
                     private = json.loads(private_path.read_text(encoding="utf-8"))
                     report = {"body": "# Scripted editor handoff finding\n\nAutoGen describes configurable multi-agent conversations. "
                         "Explicit persisted handoffs are a ResearchRelay design inference, not a demonstrated productivity gain. "
@@ -144,7 +144,7 @@ def main():
                         cwd=root, env=environment, check=True, capture_output=True, timeout=20)
                     assert worker.wait(timeout=90)==0, "Real CLI worker failed to submit"
                     outcome = next(item for item in events(worker_log_path) if item.get("status")=="submitted")
-                    assert Path(outcome["submission_path"]).is_relative_to(clone/".git")
+                    assert Path(outcome["submission_path"]).resolve().is_relative_to((clone/".git").resolve())
                     for path in exchange.rglob("*"):
                         if path.is_file():
                             text = path.read_text(encoding="utf-8")

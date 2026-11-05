@@ -17,6 +17,8 @@ mamba run -n researchrelay researchrelay serve --port 8000
 
 Run service, demo, and test commands from the checkout directory. Open **http://127.0.0.1:8000**, then choose **Run literature pilot**. The browser can close while the service and workers continue. Stop the service with Ctrl+C. Existing users can skip cloning and environment creation.
 
+In VS Code, install the recommended Python extensions, select the `researchrelay` environment with **Python: Select Interpreter**, then press **F5** to run **ResearchRelay: service**. The **Terminal: Run Task** menu also provides service, literature-demo, test, and editor-worker tasks. For Copilot or another extension agent, follow the [VS Code handoff guide](docs/vscode.md), including its [fresh collaborative-search scope](examples/literature-search-meeting.md).
+
 For development, run `git switch SRTD_DT_test` after cloning and before installing the environment.
 
 To run the same demonstration from another terminal against the dashboard's default database:

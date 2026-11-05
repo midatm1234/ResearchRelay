@@ -101,6 +101,8 @@ API documentation: **http://127.0.0.1:8000/docs** (port 8001 for the offline ser
 
 ## macOS setup (Apple Silicon and Intel)
 
+Intel macOS uses `cryptography==48.0.1`, the last release with a universal Mac wheel; Apple Silicon, Windows, and Linux use `50.0.2`. Both the package requirements and lock file select the correct version automatically, including an Intel Python under Rosetta. This avoids requiring a Rust/OpenSSL source build. ResearchRelay uses Fernet only; the Intel compatibility pin needs ongoing review because [upstream removed Intel support in version 49](https://cryptography.io/en/50.0.2/changelog/#v49-0-0).
+
 ### Prerequisites and architecture
 
 - Install Git 2.28+ (`git --version`). Apple's Command Line Tools provide Git; run `xcode-select --install` if they are missing and finish the installer before continuing.

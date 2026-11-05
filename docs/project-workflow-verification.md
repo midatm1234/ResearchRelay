@@ -34,6 +34,10 @@ python scripts/ui_projects_smoke.py --demo
 
 The standalone scripts own temporary state and stop only the service they start. `researchrelay serve --project-demo` is the persistent, loopback-only working-session variant; visit `/projects`. Simulated accounts and Git repositories are clearly labeled and kept under `.runtime/project-demo/`.
 
+## Intel Mac dependency compatibility
+
+The first pushed run exposed that `cryptography==50.0.2` has no Intel macOS wheel and upstream removed that platform. Package and lock-file markers now select `48.0.1` on Intel macOS, the last universal2 release, and `50.0.2` elsewhere. PyPI wheel metadata and the upstream changelog were checked; native CI validates the resulting installation. This compatibility pin needs ongoing maintenance. ResearchRelay uses Fernet and does not use PKCS7, X.509 or raw ChaCha20 APIs.
+
 ## Native platform CI
 
 `.github/workflows/macos.yml` runs the full suite/build and original literature/editor/browser workflows plus new project CLI/browser scripts on native macOS 15 Apple Silicon and Intel. `.github/workflows/portable.yml` runs the full suite/build and new project scripts on Ubuntu 24.04 and Windows 2025. Exact pushed-commit results are reported after execution; defining CI is not itself evidence of a passing native run.

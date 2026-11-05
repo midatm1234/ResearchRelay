@@ -20,7 +20,7 @@ def _split(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-def extract_meeting(notes: str, participant: str = "human", project_id: str = "forecast-pilot") -> dict:
+def extract_meeting(notes: str, participant: str = "human", project_id: str = "agentic-collaboration") -> dict:
     if not notes.strip():
         raise ValueError("Paste meeting notes or upload a text/Markdown file first")
     if len(notes) > 200_000:

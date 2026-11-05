@@ -27,7 +27,8 @@ class Worker:
                  token: str | None = None, mode: str | None = None, lease_seconds: int = 120,
                  timeout: int = 600, allowed_tools: str | None = None, provider: str | None = None,
                  model: str | None = None, base_url: str | None = None,
-                 api_key_env: str | None = None, command: list[str] | None = None):
+                 api_key_env: str | None = None, command: list[str] | None = None,
+                 open_editor: bool = False):
         self.client = httpx.Client(base_url=server.rstrip("/") + "/api/", timeout=30,
                                    headers={"Authorization": f"Bearer {token}"} if token else {})
         self.participant = participant
@@ -35,6 +36,7 @@ class Worker:
         self.mode = mode
         self.lease_seconds = lease_seconds
         self.timeout = timeout
+        self.open_editor = open_editor
         self.allowed_tools = allowed_tools or "Read,Write,Edit,Glob,Grep"
         self.profile_overrides = {key:value for key,value in {
             'provider':provider, 'model':model, 'base_url':base_url,
@@ -64,30 +66,43 @@ class Worker:
             raise RuntimeError('Project synchronization needs attention before this worker can start a task')
         return context
 
-    def run_once(self) -> dict:
-        self.project_context()
+    def run_once(self, resume_handoff: str | Path | None = None) -> dict:
+        current_project = self.project_context()
         connection = self._get('participants/me/agent')
         stored = connection.get('profile',connection)
         stored = {key:value for key,value in stored.items() if key in {'provider','model','base_url','api_key_env','command','allowed_tools'}}
         self.active_profile = validate_profile({**stored,**self.profile_overrides})
         self.allowed_tools = self.active_profile['allowed_tools'] or self.allowed_tools
-        response = self.client.get("tasks", params={"owner": self.participant, "ready": "true"})
-        response.raise_for_status()
-        tasks = response.json()
-        if isinstance(tasks, dict):
-            tasks = tasks.get("tasks", [])
-        if not tasks:
-            return {"status": "idle", "participant": self.participant}
-        task = tasks[0]
-        try:
-            claim = self._post(f"tasks/{task['id']}/claim", {"worker_id": self.participant,
-                                                          "lease_seconds": self.lease_seconds})
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code == 409:
-                return {"status": "claim_lost", "task_id": task["id"]}
-            raise
-        task = claim.get("task", claim)
-        token = claim.get("claim_token") or task["claim_token"]
+        resumed = self._load_handoff(resume_handoff) if resume_handoff else None
+        if resumed:
+            self.active_profile = validate_profile(resumed['profile'])
+            task = self._get(f"tasks/{resumed['task_id']}")
+            if task.get('owner') != self.participant or task.get('attempts') != resumed['attempt'] or task.get('status') != 'running':
+                raise ProviderError('Editor claim is no longer running for this participant and attempt; retain local work and ask the coordinator to retry', 'canceled')
+            token = resumed['claim_token']
+            try:
+                self._post(f"tasks/{task['id']}/heartbeat", {'claim_token':token,'lease_seconds':self.lease_seconds,
+                           'progress':'Participant resuming editor handoff'})
+            except httpx.HTTPStatusError:
+                raise ProviderError('Editor claim expired or changed; retain local work and ask the coordinator to reconcile/retry', 'canceled') from None
+        else:
+            response = self.client.get("tasks", params={"owner": self.participant, "ready": "true"})
+            response.raise_for_status()
+            tasks = response.json()
+            if isinstance(tasks, dict):
+                tasks = tasks.get("tasks", [])
+            if not tasks:
+                return {"status": "idle", "participant": self.participant}
+            task = tasks[0]
+            try:
+                claim = self._post(f"tasks/{task['id']}/claim", {"worker_id": self.participant,
+                                                              "lease_seconds": self.lease_seconds})
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code == 409:
+                    return {"status": "claim_lost", "task_id": task["id"]}
+                raise
+            task = claim.get("task", claim)
+            token = claim.get("claim_token") or task["claim_token"]
         stopped, lost = threading.Event(), threading.Event()
 
         def heartbeat() -> None:
@@ -103,9 +118,17 @@ class Worker:
         thread = threading.Thread(target=heartbeat, daemon=True)
         thread.start()
         try:
-            project = self.project_context()
-            base_ref = self._prepare_project_repository(project)
-            isolation = self.repository.isolated_branch(task["id"], task["attempts"], base_ref=base_ref)
+            if resumed:
+                context_before = resumed['context']
+                if (task.get('stale_inputs') or self._context_pins(current_project)['documents'] != self._context_pins(context_before['project'])['documents']
+                        or task.get('input_refs',[]) != context_before['task'].get('input_refs',[])):
+                    raise ProviderError('Shared inputs changed during the editor handoff; reconcile the new context and retry instead of submitting stale findings', 'stale_inputs')
+                project = context_before['project']
+                isolation = resumed['isolation']
+            else:
+                project = self.project_context()
+                base_ref = self._prepare_project_repository(project)
+                isolation = self.repository.isolated_branch(task["id"], task["attempts"], base_ref=base_ref)
             workspace = Path(isolation["workspace"])
             exchange = workspace / ".researchrelay-exchange"
             if _git(workspace, "ls-files", "--", ".researchrelay-exchange"):
@@ -134,6 +157,20 @@ class Worker:
                 self._claude(workspace, lost)
             elif provider == 'manual':
                 self._wait_for_manual(workspace, lost)
+            elif provider == 'vscode':
+                from .vscode import prepare_handoff, open_editor, wait_for_report
+                state_path = self._save_handoff(task, token, isolation, context)
+                handoff = prepare_handoff(workspace,context)
+                print(json.dumps({'status':'waiting_for_editor_report','task_id':task['id'],
+                                  'workspace':str(workspace),'resume_handoff':str(state_path),**handoff}),flush=True)
+                if self.open_editor:
+                    try:
+                        open_editor(handoff['workspace_file'])
+                    except ProviderError as error:
+                        print(json.dumps({'status':'editor_launch_unavailable','message':str(error),
+                                          'workspace_file':handoff['workspace_file'],
+                                          'next_action':'Open the workspace file manually; the worker is still renewing this claim.'}),flush=True)
+                self._write_report(workspace,context,wait_for_report(workspace,self.timeout,lost))
             else:
                 self._report(workspace, lost, context)
             if lost.is_set():
@@ -195,12 +232,17 @@ class Worker:
             payload = {"claim_token": token, "idempotency_key": submission_id,
                        "artifact": {"metadata": metadata, "body": body},
                        "completion_notes": f"Computed in isolated branch {isolation['branch']}; commit {commit}. Scientific interpretation awaits review."}
-            (exchange / "submission.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            submission_path = (self._handoff_root()/f"{task['id']}-{task['attempts']}.submission.json"
+                               if provider == 'vscode' else exchange / "submission.json")
+            submission_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            if provider == 'vscode':
+                submission_path.chmod(0o600)
             result = self._post(f"tasks/{task['id']}/submit", payload)
             self._post(f"tasks/{task['id']}/repository", {"branch": isolation["branch"], "commit": commit,
                        "detail": "Participant-owned isolated worktree; ready for configured repository review policy"})
             return {"status": "submitted", "task_id": task["id"], "branch": isolation["branch"],
-                    "commit": commit, "result": result, "workspace": str(workspace), "exchange": str(exchange)}
+                    "commit": commit, "result": result, "workspace": str(workspace), "exchange": str(exchange),
+                    "submission_path":str(submission_path),"result_path":str(workspace/record_name)}
         except Exception as error:
             if not lost.is_set():
                 try:
@@ -215,6 +257,39 @@ class Worker:
         finally:
             stopped.set()
             thread.join(timeout=2)
+
+    def _handoff_root(self):
+        common = Path(_git(self.repository.path,'rev-parse','--git-common-dir'))
+        if not common.is_absolute():
+            common = self.repository.path/common
+        root = common.resolve()/'researchrelay-worker'
+        root.mkdir(exist_ok=True)
+        root.chmod(0o700)
+        return root
+
+    def _save_handoff(self, task, token, isolation, context):
+        path = self._handoff_root()/f"{task['id']}-{task['attempts']}.handoff.json"
+        path.write_text(json.dumps({'task_id':task['id'],'attempt':task['attempts'],'participant':self.participant,
+                        'repository':str(self.repository.path),'claim_token':token,'isolation':isolation,
+                        'context':context,'profile':self.active_profile},indent=2),encoding='utf-8')
+        path.chmod(0o600)
+        return path
+
+    def _load_handoff(self, state_path):
+        path = Path(state_path).expanduser().resolve()
+        if not path.is_relative_to(self._handoff_root().resolve()) or not path.name.endswith('.handoff.json'):
+            raise ProviderError('Resume state must be the private handoff file from this participant clone', 'configuration')
+        try:
+            state = json.loads(path.read_text(encoding='utf-8'))
+            workspace = Path(state['isolation']['workspace']).resolve()
+            if (state['participant'] != self.participant or state['repository'] != str(self.repository.path)
+                    or state['profile']['provider'] != 'vscode'
+                    or not workspace.is_relative_to(self.repository.workspaces.resolve())
+                    or _git(workspace,'branch','--show-current') != state['isolation']['branch']):
+                raise ValueError('Mismatched editor claim')
+            return state
+        except (OSError,ValueError,KeyError,TypeError):
+            raise ProviderError('Private editor resume state is invalid or belongs to a different participant/worktree', 'configuration') from None
 
     def _guard_commit_outputs(self, workspace, files, result_text=''):
         # Inspect exactly the outputs we will add; never inspect private submission
@@ -259,7 +334,7 @@ class Worker:
 
     def _agent_id(self):
         profile = self.active_profile
-        return profile['provider']+'/'+(profile.get('model') or ('configured-agent' if profile['provider']=='command' else 'default'))
+        return profile['provider']+'/'+(profile.get('model') or ('configured-agent' if profile['provider']=='command' else 'editor-selected' if profile['provider']=='vscode' else 'default'))
 
     @staticmethod
     def _sources(context):
@@ -327,8 +402,11 @@ class Worker:
         return expected
 
     def _report(self, workspace, lost, context):
-        import sys
         report = generate_report(self.active_profile,context,self.timeout,lost,workspace)
+        self._write_report(workspace,context,report)
+
+    def _write_report(self, workspace, context, report):
+        import sys
         task = context['task']
         project = context.get('project',{})
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -340,7 +418,8 @@ class Worker:
                     'input_refs':task.get('input_refs',[]),'acceptance_criteria':task.get('acceptance_criteria',[]),
                     'data':self._context_pins(project)['documents'] or [{'description':'Task-supplied input artifacts and authorized objective'}],
                     'code':[{'component':'researchrelay.providers','execution':'Participant-local report synthesis; no scientific code execution claimed'}],
-                    'configuration':{'provider':self.active_profile['provider'],'model':self.active_profile.get('model')},
+                    'configuration':{'provider':self.active_profile['provider'],'model':self.active_profile.get('model'),
+                                      'model_selection_verified':False},
                     'environment':{'python':sys.version.split()[0],'execution':'participant-owned provider adapter'},
                     'evidence':report['findings'],'assumptions':report['assumptions'],
                     'limitations':report['limitations']+['A provider report is not an independently verified scientific conclusion.'],
@@ -348,7 +427,7 @@ class Worker:
                     'unresolved_questions':report['unresolved_questions'],'next_actions':report['next_actions'],
                     'citations':report['citations'],'relations':[], 'format_status':'provisional','type':'Research Result',
                     'sources':self._sources(context),'generated':{'by':self._agent_id(),'at':timestamp},
-                    'provenance':{'execution_kind':'provider_report','context_commit':project.get('sync',{}).get('latest_commit')},
+                    'provenance':{'execution_kind':'editor_handoff' if self.active_profile['provider']=='vscode' else 'provider_report','context_commit':project.get('sync',{}).get('latest_commit')},
                     'project_context':self._context_pins(project)}
         (workspace/'.researchrelay-exchange/result.md').write_text(render_markdown(metadata,report['body']),encoding='utf-8')
 

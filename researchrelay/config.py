@@ -9,9 +9,9 @@ from dotenv import load_dotenv
 
 @dataclass
 class Settings:
-    db_path: Path = field(default_factory=lambda: Path(os.getenv('RESEARCHRELAY_DB', '.runtime/state.db')))
-    repo_path: Path = field(default_factory=lambda: Path(os.getenv('RESEARCHRELAY_REPO', '.runtime/project-repo')))
-    project_id: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_PROJECT', 'forecast-pilot'))
+    db_path: Path = field(default_factory=lambda: Path(os.getenv('RESEARCHRELAY_DB', '.runtime/literature/state.db')))
+    repo_path: Path = field(default_factory=lambda: Path(os.getenv('RESEARCHRELAY_REPO', '.runtime/literature/project-record')))
+    project_id: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_PROJECT', 'agentic-collaboration'))
     mode: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_MODE', 'demo'))
     tokens: dict = field(default_factory=lambda: json.loads(os.getenv('RESEARCHRELAY_TOKENS', '{}')))
     github_base: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_BASE', 'main'))

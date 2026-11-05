@@ -1,25 +1,34 @@
 ---
-id: review-forecast-a
-project_id: example-project
+project_id: agentic-collaboration
+created_at: '2026-11-04T23:00:00Z'
+updated_at: '2026-11-04T23:00:00Z'
+producing_agent: literature-example/1.0
+responsible_participant: bob
+format_status: provisional
+generated:
+  by: literature-example/1.0
+  at: '2026-11-04T23:00:00Z'
+sources:
+- id: vaccaro-2024-human-ai
+  resource: https://www.nature.com/articles/s41562-024-02024-1
+citations:
+- source_id: vaccaro-2024-human-ai
+  url: https://www.nature.com/articles/s41562-024-02024-1
+provenance:
+  method: Illustrative template grounded in the verified source note
+  human_reviewed: false
+id: review-literature-example
 artifact_type: review
-task_id: forecast-a
-responsible_participant: carol
-producing_agent: example-reviewer/1.0
+task_id: literature-example
 result_ref:
-  id: result-forecast-a
+  id: result-literature-example
+  version: 1
+input_refs:
+- id: result-literature-example
   version: 1
 verdict: approve
-rationale: The result reports RMSE, signed bias, paired count, and reproducible inputs
-  as requested. Synthetic scope limits are explicit.
-criteria:
-- criterion: Report RMSE and bias and paired sample count
-  outcome: pass
-  evidence: RMSE 0.543139; bias 0.25; n=4.
-input_refs:
-- id: result-forecast-a
-  version: 1
-created_at: '2026-11-03T12:00:00Z'
-updated_at: '2026-11-03T12:00:00Z'
+rationale: The template states publication status, access scope, and limits; independent
+  scientific appraisal remains open.
 schema_version: '1.0'
 version: 1
 objective: ''
@@ -32,8 +41,9 @@ next_actions: []
 related_files: []
 repository_commits: []
 pull_requests: []
+type: Literature Review
 ---
 
-# Agent review
+# Literature review example
 
-Acceptance criteria are satisfied. Human scientific interpretation remains pending.
+Illustrative portable template for the collaborative literature-search workflow.

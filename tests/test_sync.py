@@ -96,7 +96,7 @@ def test_disjoint_changes_preserved_but_same_file_stale_edit_conflicts(shared):
     a = publish(shared,"alice",payload(old,f"{PREFIX}/alice-independent.md",note(identifier="independent"),"independent-a"))
     b = publish(shared,"bob",payload(old,f"{PREFIX}/bob-independent.md",note("bob",identifier="independent-b"),"independent-b"))
     assert a.status_code==b.status_code==200
-    edited = publish(shared,"alice",payload(old,f"{PREFIX}/finding.md",note(version=2,body="Updated pairing evidence."),"edit-a"))
+    edited = publish(shared,"alice",payload(old,f"{PREFIX}/finding.md",note(version=2,body="Updated publication-status evidence."),"edit-a"))
     assert edited.status_code==200,edited.text
     stale_payload = payload(old,f"{PREFIX}/finding.md",note("bob",version=2,body="Stale competing interpretation."),"edit-b")
     stale = publish(shared,"bob",stale_payload)
@@ -104,7 +104,7 @@ def test_disjoint_changes_preserved_but_same_file_stale_edit_conflicts(shared):
     assert stale.json()["paths"]==[f"{PREFIX}/finding.md"]
     assert "Refresh" in stale.json()["next_action"]
     latest = context(shared,"bob")
-    assert next(d for d in latest["documents"] if d["path"].endswith("/finding.md"))["body"].rstrip().endswith("Updated pairing evidence.")
+    assert next(d for d in latest["documents"] if d["path"].endswith("/finding.md"))["body"].rstrip().endswith("Updated publication-status evidence.")
     # The draft remains durable for deliberate reconciliation; no completion was duplicated.
     with shared["engine"].connect() as db:
         row = db.execute("SELECT payload,response FROM publications WHERE request_id='edit-b'").fetchone()

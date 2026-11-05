@@ -119,6 +119,7 @@ function render(data) {
   renderDecisions(openDecisions);
   renderTasks();
   renderArtifacts(data.artifacts || []);
+  renderSourceCoverage();
   renderActivity(data.events || []);
   // Keep the catch-up stable across polls until the participant acknowledges it.
   const newEvents = (data.events || []).filter(event => Number(event.seq) > state.seen);
@@ -131,10 +132,10 @@ function render(data) {
   state.pilotBusy = jobs.some(job => ['running', 'queued'].includes(job.status));
   $('pilot-button').disabled = state.pilotBusy;
   const completeJob = jobs.find(job => job.id === 'pilot' && job.status === 'completed');
-  $('pilot-button').replaceChildren(node('span', { text: state.pilotBusy ? '◷' : completeJob ? '✓' : '▷' }), document.createTextNode(state.pilotBusy ? 'Pilot in progress…' : completeJob ? 'View pilot summary' : 'Run local pilot'));
+  $('pilot-button').replaceChildren(node('span', { text: state.pilotBusy ? '◷' : completeJob ? '✓' : '▷' }), document.createTextNode(state.pilotBusy ? 'Pilot in progress…' : completeJob ? 'View literature summary' : 'Run literature pilot'));
   const failedJob = jobs.find(job => job.status === 'failed');
   if (completeJob && $('notice').textContent.startsWith('Local demonstration running:')) {
-    notice('Local pilot complete: the reviewed evidence and a scientific decision are ready. Live Claude and GitHub were not used.');
+    notice('Literature pilot complete: publication-status and access limits are explicit; your next-search decision is ready. No live model inference or search was used.');
   }
   if (failedJob) {
     let detail = failedJob.data;
@@ -152,7 +153,7 @@ function render(data) {
 function renderDecisions(decisions) {
   if (!decisions.length) {
     const complete = state.dashboard?.tasks?.some(task => task.status === 'completed');
-    clear($('decision-section'), [node('div', { class: 'decision-empty' }, [node('span', { class: 'empty-icon', text: '◇' }), node('div', {}, [node('h2', { text: complete ? 'The next move belongs to the science.' : 'A shared record. A clearer next step.' }), node('p', { text: complete ? 'No open human decisions. Review the evidence and record what the team should do next.' : 'Run the forecast pilot or turn your meeting notes into an agreed scope of work.' })])])]);
+    clear($('decision-section'), [node('div', { class: 'decision-empty' }, [node('span', { class: 'empty-icon', text: '◇' }), node('div', {}, [node('h2', { text: complete ? 'The next move belongs to the science.' : 'A shared record. A clearer next step.' }), node('p', { text: complete ? 'No open human decisions. Review the evidence and record what the team should do next.' : 'Run the literature pilot or turn your meeting notes into an agreed scope of work.' })])])]);
     return;
   }
   clear($('decision-section'), decisions.map((decision, index) => {
@@ -401,12 +402,12 @@ $('pilot-button').addEventListener('click', event => action(event.currentTarget,
   if (completedJob) {
     let data = completedJob.data;
     try { data = typeof data === 'string' ? JSON.parse(data) : data; } catch { /* Retain original data. */ }
-    openDetail('Working-session pilot', 'LOCAL DEMONSTRATION · RECORDED MEASURES', [node('p', { class: 'section-intro', text: 'Synthetic computations, local Git commits, and reviews ran without external credentials. Coordination time and the assessment must be supplied by a participant.' }), detailField('Pilot measures', state.dashboard.metric_summary || {}), node('pre', { class: 'artifact-source', text: asText(data) })]);
+    openDetail('Working-session pilot', 'LOCAL DEMONSTRATION · RECORDED MEASURES', [node('p', { class: 'section-intro', text: 'The local literature pilot processed the verified source-note snapshot, recorded Git commits, and demonstrated peer review without live model inference or a fresh literature search. Coordination time and assessment require actual participant input.' }), detailField('Pilot measures', state.dashboard.metric_summary || {}), node('pre', { class: 'artifact-source', text: asText(data) })]);
     return;
   }
   const result = await api('/pilot/run', 'POST', {});
   state.pilotBusy = true;
-  notice('Local demonstration running: two independent agents, synthesis, a justified revision, and a human scientific decision. No external credentials are used.');
+  notice('Local demonstration running: two literature evidence tasks, a reviewed synthesis, and a human choice about the next search. No live search or model inference is used.');
   toast(result.message || 'Pilot started. You can close the browser while agents work.');
   await refresh(true);
 }));
@@ -425,7 +426,7 @@ $('assessment-form').addEventListener('submit', event => {
 const accessButton = node('button', { class: 'text-button', text: 'Access', title: 'Configure a project-scoped access token for this browser session', onclick: () => {
   const input = node('input', { type: 'password', autocomplete: 'off', placeholder: 'Project access token', value: sessionStorage.getItem('researchrelay:token') || '', 'aria-label': 'Project access token' });
   const button = node('button', { type: 'submit', class: 'button primary', text: 'Use for this browser session' });
-  openDetail('Project access', 'OPTIONAL AUTHENTICATED SERVICE', [node('p', { class: 'section-intro', text: 'The local demonstration does not need a token. For a configured service, use your project-scoped token. It is held only in this browser session and sent to this service.' }), node('form', { onsubmit: event => { event.preventDefault(); const token = input.value.trim(); if (token) sessionStorage.setItem('researchrelay:token', token); else sessionStorage.removeItem('researchrelay:token'); $('detail-dialog').close(); refresh(); } }, [input, node('div', { class: 'detail-buttons' }, [button])])]);
+  openDetail('Project access', 'OPTIONAL AUTHENTICATED SERVICE', [node('p', { class: 'section-intro', text: 'The local literature demonstration does not need a token. For a configured service, use your project-scoped token. It is held only in this browser session and sent to this service.' }), node('form', { onsubmit: event => { event.preventDefault(); const token = input.value.trim(); if (token) sessionStorage.setItem('researchrelay:token', token); else sessionStorage.removeItem('researchrelay:token'); $('detail-dialog').close(); refresh(); } }, [input, node('div', { class: 'detail-buttons' }, [button])])]);
 } });
 document.querySelector('.topbar-right').append(accessButton);
 refresh();
@@ -492,6 +493,7 @@ async function loadSharedContext() {
 function renderSharedKnowledge() {
   if (!state.project?.repository) { clear($('knowledge-list')); return; }
   if (!state.documents.length) { clear($('knowledge-list'), [node('p', { class: 'knowledge-empty', text: 'No Markdown knowledge artifacts were retrieved from the configured project directory.' })]); return; }
+  renderSourceCoverage();
   const documents = [...state.documents].sort((a, b) => a.path.localeCompare(b.path));
   clear($('knowledge-list'), documents.map(doc => {
     const meta = doc.metadata || {};
@@ -593,24 +595,29 @@ async function showAgentProfile() {
   const result = await api('/participants/me/agent');
   const profile = result.profile || result;
   state.profile = profile;
-  const provider = node('select', { 'aria-label': 'Preferred agent connection' }, [['claude-cli','Claude CLI'],['openai-responses','GPT / OpenAI Responses API'],['openai-compatible','OpenAI-compatible API or local model'],['command','Local command adapter'],['manual','Manual / external agent handoff']].map(([value,label]) => node('option', { value, text: label })));
+  const provider = node('select', { 'aria-label': 'Preferred agent connection' }, [['vscode','VS Code / Copilot Agent chat handoff'],['claude-cli','Claude CLI'],['openai-responses','GPT / OpenAI Responses API'],['openai-compatible','OpenAI-compatible API or local model'],['command','Local command adapter'],['manual','Manual / external agent handoff']].map(([value,label]) => node('option', { value, text: label })));
   provider.value = profile.provider || 'claude-cli';
   const model = node('input', { value: profile.model || '', placeholder: 'Your supported model ID', 'aria-label': 'Agent model ID' });
   const baseURL = node('input', { value: profile.base_url || '', type: 'url', placeholder: 'Provider default, or your compatible endpoint', 'aria-label': 'Agent API base URL' });
   const keyName = node('input', { value: profile.api_key_env || (profile.provider === 'openai-responses' ? 'OPENAI_API_KEY' : ''), placeholder: 'OPENAI_API_KEY when required', 'aria-label': 'Provider credential environment variable name' });
   const command = node('textarea', { value: profile.command?.length ? JSON.stringify(profile.command) : '', rows: 2, placeholder: '["python", "my_agent.py"]', 'aria-label': 'Local command argv JSON' });
   const tools = node('input', { value: profile.allowed_tools || 'Read,Write,Edit,Glob,Grep', 'aria-label': 'Claude allowed tools' });
+  const editorHelp = node('div', { class: 'editor-handoff-help' }, [node('strong', { text: 'Use your signed-in editor agent' }), node('p', { text: 'Start your local worker with --provider vscode, open its printed .code-workspace, and start Copilot or another extension’s Agent chat yourself. Ask it to read the provided instructions and write report.json, then REPORT_READY. The worker validates and submits the report. This does not remotely invoke your chat session or require an OpenAI API key.' }), node('a', { class: 'text-button', text: 'Read VS Code / Copilot handoff instructions ↗', href: 'https://github.com/midatm1234/ResearchRelay/blob/SRTD_DT_test/docs/vscode.md', target: '_blank', rel: 'noopener' })]);
+  const updateEditorHelp = () => { editorHelp.hidden = provider.value !== 'vscode'; };
+  provider.addEventListener('change', updateEditorHelp); updateEditorHelp();
   const button = node('button', { class: 'button primary', type: 'submit', text: 'Save my agent connection' });
   const form = node('form', { class: 'agent-profile-form', onsubmit: event => {
     event.preventDefault();
     action(button, async () => {
       const payload = { provider: provider.value };
-      for (const [key,input] of [['model',model],['base_url',baseURL],['api_key_env',keyName],['allowed_tools',tools]]) if (input.value.trim()) payload[key] = input.value.trim();
-      if (command.value.trim()) { payload.command = JSON.parse(command.value); if (!Array.isArray(payload.command) || payload.command.some(part => typeof part !== 'string')) throw new Error('The command must be a JSON array of string arguments.'); }
+      if (model.value.trim()) payload.model = model.value.trim();
+      if (['openai-responses','openai-compatible'].includes(provider.value)) for (const [key,input] of [['base_url',baseURL],['api_key_env',keyName]]) if (input.value.trim()) payload[key] = input.value.trim();
+      if (provider.value === 'claude-cli' && tools.value.trim()) payload.allowed_tools = tools.value.trim();
+      if (provider.value === 'command' && command.value.trim()) { payload.command = JSON.parse(command.value); if (!Array.isArray(payload.command) || payload.command.some(part => typeof part !== 'string')) throw new Error('The command must be a JSON array of string arguments.'); }
       const saved = await api('/participants/me/agent','PUT',payload);
       state.profile = saved.profile || saved; $('detail-dialog').close(); toast('Your agent profile is saved. Start your participant worker to execute tasks.');
     });
-  } }, [node('p', { class: 'section-intro', text: `Profile for ${result.participant || state.project?.participant || 'human'}. Credentials stay in your own worker environment. A consumer chat subscription does not imply API access; configure API access and billing separately where required.` }), field('Preferred agent connection',provider), field('Model ID (required for API providers)',model), field('API endpoint (optional)',baseURL), field('API key environment variable name — never enter the key itself',keyName), field('Command adapter argv (executed only by your local worker)',command), field('Claude CLI allowed tools',tools), node('p', { class: 'section-intro', text: 'This service stores connection metadata only. It does not execute the command or read your provider key. Run researchrelay worker --participant YOUR_NAME --repo YOUR_CLONE to retrieve current context, claim work, and submit a validated result.' }), button]);
+  } }, [node('p', { class: 'section-intro', text: `Profile for ${result.participant || state.project?.participant || 'human'}. Credentials stay in your own worker environment. A consumer chat subscription does not imply API access; configure API access and billing separately where required.` }), field('Preferred agent connection',provider), editorHelp, field('Model ID (required for API providers; optional editor label)',model), field('API endpoint (optional)',baseURL), field('API key environment variable name — never enter the key itself',keyName), field('Command adapter argv (executed only by your local worker)',command), field('Claude CLI allowed tools',tools), node('p', { class: 'section-intro', text: 'This service stores connection metadata only. It does not execute the command or read your provider key. Run researchrelay worker --participant YOUR_NAME --repo YOUR_CLONE to retrieve current context, claim work, and submit a validated result.' }), button]);
   openDetail('My agent connection', 'PARTICIPANT-OWNED TOOLS AND CREDENTIALS', [form]);
 }
 function configureSharedRepository() {
@@ -629,3 +636,41 @@ $('sync-project-button').addEventListener('click', event => action(event.current
 $('configure-project-button').addEventListener('click',configureSharedRepository);
 $('agent-profile-button').addEventListener('click', event => action(event.currentTarget,showAgentProfile));
 $('new-contribution-button').addEventListener('click', () => editSharedDocument(null));
+
+function renderSourceCoverage() {
+  const destination = $('source-evidence-table');
+  if (!destination) return;
+  let review;
+  for (const job of state.dashboard?.jobs || []) {
+    try { const data = typeof job.data === 'string' ? JSON.parse(job.data) : job.data; if (data?.literature_review?.source_notes?.length) review = data.literature_review; } catch { /* Keep current evidence. */ }
+  }
+  for (const artifact of state.dashboard?.artifacts || []) {
+    const evidence = artifact.metadata?.evidence;
+    if (artifact.metadata?.task_id === 'literature-synthesis' && evidence?.source_notes?.length) review = evidence;
+  }
+  let sources = review?.source_notes || [];
+  if (!sources.length) sources = state.documents.filter(doc => doc.metadata?.artifact_type === 'source_note' && doc.metadata?.bibliography).map(doc => ({
+    id: doc.metadata.id, title: doc.metadata.bibliography.title || doc.metadata.title,
+    publication_status: doc.metadata.bibliography.kind, url: doc.metadata.bibliography.url,
+    access: doc.metadata.bibliography.access || doc.metadata.provenance?.source_access,
+    source_path: doc.path, sha256: doc.sha256, search_date: doc.metadata.provenance?.search_date,
+  }));
+  if (!sources.length) {
+    $('source-count').textContent = 'Not loaded';
+    $('source-coverage-summary').textContent = 'Run the literature pilot or retrieve the shared source notes to inspect their publication status and access limits.';
+    clear($('source-status-counts')); clear(destination); return;
+  }
+  const counts = {};
+  sources.forEach(source => { const kind = source.publication_status || 'unclassified'; counts[kind] = (counts[kind] || 0) + 1; });
+  $('source-count').textContent = `${sources.length} source notes`;
+  const date = review?.search_date || sources.find(source => source.search_date)?.search_date;
+  $('source-coverage-summary').textContent = `${date ? `Search record: ${date}. ` : ''}Coverage is read from the verified note metadata. Publication status and inspected access are distinct from scientific validation; the pilot does not perform a new live search.`;
+  const labels = { published_paper: 'Published papers', preprint: 'Preprints', specification: 'Specifications', software_documentation: 'Software documentation', unclassified: 'Unclassified' };
+  clear($('source-status-counts'), Object.entries(counts).map(([kind,count]) => node('span', { class: 'status-badge', text: `${labels[kind] || cap(kind)}: ${count}` })));
+  const rows = sources.map(source => {
+    let title = node('span', { text: source.title || source.id });
+    try { const url = new URL(source.url); if (['https:','http:'].includes(url.protocol)) title = node('a', { href: url.href, target: '_blank', rel: 'noopener', text: source.title || source.id }); } catch { /* No external source link. */ }
+    return node('tr', {}, [node('td', {}, [title]), node('td', { text: labels[source.publication_status] || cap(source.publication_status || 'unclassified') }), node('td', { text: source.access || 'Access level not recorded' })]);
+  });
+  clear(destination, [node('table', { class: 'coverage-table' }, [node('thead', {}, [node('tr', {}, ['Source','Publication status','Inspected access / limitation'].map(label => node('th', { scope: 'col', text: label })))]), node('tbody', {}, rows)])]);
+}

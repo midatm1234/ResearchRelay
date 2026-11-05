@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import httpx
 from jsonschema import Draft202012Validator
 
-PROVIDERS = ('claude-cli', 'openai-responses', 'openai-compatible', 'command', 'manual')
+PROVIDERS = ('claude-cli', 'openai-responses', 'openai-compatible', 'command', 'manual', 'vscode')
 PROFILE_FIELDS = {'provider', 'model', 'base_url', 'api_key_env', 'command', 'allowed_tools'}
 OUTPUT_CREDENTIAL_PATTERN = re.compile(rb'(?:sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{24,}|github_pat_[A-Za-z0-9_]{24,}|-----BEGIN[^\r\n]*PRIVATE KEY-----)')
 

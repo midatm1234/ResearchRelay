@@ -1,38 +1,53 @@
 ---
-id: decision-next-validation
-project_id: example-project
+project_id: agentic-collaboration
+created_at: '2026-11-04T23:00:00Z'
+updated_at: '2026-11-04T23:00:00Z'
+producing_agent: literature-example/1.0
+responsible_participant: human
+format_status: provisional
+generated:
+  by: literature-example/1.0
+  at: '2026-11-04T23:00:00Z'
+sources:
+- id: vaccaro-2024-human-ai
+  resource: https://www.nature.com/articles/s41562-024-02024-1
+citations:
+- source_id: vaccaro-2024-human-ai
+  url: https://www.nature.com/articles/s41562-024-02024-1
+provenance:
+  method: Illustrative template grounded in the verified source note
+  human_reviewed: false
+id: decision-literature-example
 artifact_type: decision
-responsible_participant: scientist
-producing_agent: example-synthesis/1.0
-question: Should the team expand validation before considering forecast B for operational
-  use?
+input_refs:
+- id: result-literature-example
+  version: 1
+- id: review-literature-example
+  version: 1
+question: Which evidence gap should the team investigate next?
 options:
-- Expand paired-date validation and examine station coverage
-- Keep both experiments exploratory pending methodological changes
+- Audit full-text methods
+- Update the search
 evidence:
-- Illustrative data has only four synthetic dates; no real-world generalization is
-  established.
-consequence: This choice determines whether follow-up data collection or methodology
-  work is approved.
-status: pending
-unresolved_questions:
-- What minimum performance difference matters scientifically?
-created_at: '2026-11-03T12:00:00Z'
-updated_at: '2026-11-03T12:00:00Z'
+- The cited study motivates evaluation rather than an assumed gain
+consequence: Defines the next proposed task
+status: open
 schema_version: '1.0'
 version: 1
 objective: ''
-input_refs: []
 dependencies: []
 expected_outputs: []
 acceptance_criteria: []
 validation_results: []
+unresolved_questions: []
 next_actions: []
 related_files: []
 repository_commits: []
 pull_requests: []
+type: Literature Decision
+decision_status: open
 ---
 
-# Human scientific decision
+# Literature decision example
 
-Choose the next research direction. Computational completion and agent review do not answer this question.
+Illustrative portable template for the collaborative literature-search workflow.

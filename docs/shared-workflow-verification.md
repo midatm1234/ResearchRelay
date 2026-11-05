@@ -1,6 +1,6 @@
-# Shared GitHub collaboration verification — November 4, 2026
+# Archived shared GitHub verification — November 4, 2026
 
-This report distinguishes local execution, mocked failures, remote Git transport, and model inference. The current implementation is on `SRTD_DT_test`. The full Windows suite and subsequent focused checks passed. The live GitHub SSH pilot also completed. Native macOS CI exposed a Unicode-path diagnostic issue; after the fix, both Apple Silicon and Intel jobs passed the complete suite and all workflow/build/browser checks.
+This report preserves verification of the earlier shared-project implementation through commit `82c6ea88e8c117a5680309aa41b8b43c020ea2b7`. It predates the default-literature and VS Code handoff changes; do not treat these results as verification of later changes. See [current verification](verification.md). It distinguishes local execution, mocked failures, remote Git transport, and model inference. That implementation was on `SRTD_DT_test`. The full Windows suite and subsequent focused checks passed. The live GitHub SSH pilot also completed. Native macOS CI exposed a Unicode-path diagnostic issue; after the fix, both Apple Silicon and Intel jobs passed the complete suite and all workflow/build/browser checks.
 
 ## Verified local workflow
 
@@ -27,11 +27,11 @@ The underlying source notes, [search record](../projects/agentic-collaboration/s
 | Live GitHub SSH publication | Completed: Alice `cf95142ca465251311e7256b788cabbf491fdd7a`, Bob `b6b378ff170d68a681cd92255b222102ef390520`. Both tasks completed; subsequent retrieval succeeded; stale edit returned HTTP 409. Two command agents used one SSH Git principal. See [pilot evidence](../projects/agentic-collaboration/pilot/verification-20261104.md). |
 | Separate GitHub users | Not demonstrated by the local pilot. Application participant identities share the coordinator's configured Git principal; attributing Alice and Bob does not establish two distinct GitHub account authentications. |
 | Claude/GPT live inference | No successful inference verified. Claude CLI reported a configured API-key helper, but one real worker invocation timed out at its 90-second limit: no valid CLI JSON/result, task blocked, review not started. No retry. OpenAI/compatible HTTP contracts used mocks; no live GPT/compatible request was verified. A consumer chat subscription does not establish API access. |
-| Current implementation on macOS | [Run 41931908567](https://github.com/midatm1234/ResearchRelay/actions/runs/41931908567), implementation `82c6ea88e8c117a5680309aa41b8b43c020ea2b7`: **142 tests passed on each architecture**, arm64 macOS 15.8.2 (38.40 s) and x86_64 macOS 15.7.9 (81.19 s), native Python 3.12.10. Dependency checks, wheel builds, API startup/scientific smoke, literature handoffs, and both browser workflows passed on both. Shared-browser runs reported zero JavaScript errors. |
+| Archived implementation on macOS | [Run 41931908567](https://github.com/midatm1234/ResearchRelay/actions/runs/41931908567), implementation `82c6ea88e8c117a5680309aa41b8b43c020ea2b7`: **142 tests passed on each architecture**, arm64 macOS 15.8.2 (38.40 s) and x86_64 macOS 15.7.9 (81.19 s), native Python 3.12.10. Dependency checks, wheel builds, API startup/scientific smoke, literature handoffs, and both browser workflows passed on both. Shared-browser runs reported zero JavaScript errors. |
 | Previous macOS baseline | Native macOS 15 Apple Silicon and Intel baseline checks were reported passing before these collaboration changes. Matching run/commit evidence must remain separate from current-branch verification; see [Actions](https://github.com/midatm1234/ResearchRelay/actions/workflows/macos.yml). |
 | Native Miniforge installation / Safari | Not exercised by these local checks. A pip-based macOS CI run does not establish an interactive Miniforge installation or Safari automation. |
 
-The [earlier verification report](verification.md) records the forecast pilot and prior compatibility work. Current live transport and macOS results should be added below with exact commit/run references when available.
+The [current verification report](verification.md) records the current literature-first workflow checks. Exact run and commit references above apply only to the archived implementation identified here.
 
 ## Reproduce
 

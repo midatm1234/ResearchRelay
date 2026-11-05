@@ -156,7 +156,7 @@ class Repository:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
                 files[name] = hashlib.sha256(content).hexdigest()
-            dashboard = engine.dashboard()
+            dashboard = engine.dashboard(mark_visit=False)
             # Snapshots are derived views, never interpreted as task transitions.
             snapshot = {"authority": "SQLite", "generated_from_event_seq": max((e["seq"] for e in dashboard["events"]), default=0),
                         "tasks": [{k: t.get(k) for k in ("id", "title", "owner", "status", "dependencies", "input_refs", "result_ref", "revision_count", "completion_notes", "repository")}

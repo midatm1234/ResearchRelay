@@ -1,0 +1,109 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ResearchRelay: start service",
+      "args": [
+        "-m",
+        "researchrelay",
+        "serve"
+      ],
+      "isBackground": true,
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "ResearchRelay: run literature demo",
+      "args": [
+        "-m",
+        "researchrelay",
+        "demo"
+      ],
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "ResearchRelay: test",
+      "args": [
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "group": "test",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "ResearchRelay: configure editor agent",
+      "args": [
+        "-m",
+        "researchrelay",
+        "agent",
+        "configure",
+        "--provider",
+        "vscode"
+      ],
+      "options": {
+        "env": {
+          "RESEARCHRELAY_TOKEN": "${input:participantToken}"
+        },
+        "cwd": "${workspaceFolder}"
+      },
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "problemMatcher": []
+    },
+    {
+      "label": "ResearchRelay: editor worker",
+      "args": [
+        "-m",
+        "researchrelay",
+        "worker",
+        "--participant",
+        "${input:participant}",
+        "--repo",
+        "${workspaceFolder}/.runtime/${input:participant}-clone",
+        "--provider",
+        "vscode",
+        "--once",
+        "--timeout",
+        "3600"
+      ],
+      "options": {
+        "env": {
+          "RESEARCHRELAY_TOKEN": "${input:participantToken}"
+        },
+        "cwd": "${workspaceFolder}"
+      },
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "participant",
+      "type": "promptString",
+      "description": "Assigned participant identity",
+      "default": "alice"
+    },
+    {
+      "id": "participantToken",
+      "type": "promptString",
+      "description": "Your private ResearchRelay participant token (never saved in this file)",
+      "password": true
+    }
+  ]
+}

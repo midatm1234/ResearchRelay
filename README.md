@@ -15,9 +15,9 @@ mamba env create -f environment.yml
 mamba run -n researchrelay researchrelay serve --port 8000
 ```
 
-Run service, demo, and test commands from the checkout directory. Open **http://127.0.0.1:8000**, then choose **Run local pilot**. The browser can close while the service and workers continue. Stop the service with Ctrl+C. Existing users can skip cloning and environment creation.
+Run service, demo, and test commands from the checkout directory. Open **http://127.0.0.1:8000**, then choose **Run literature pilot**. The browser can close while the service and workers continue. Stop the service with Ctrl+C. Existing users can skip cloning and environment creation.
 
-To evaluate these changes before they merge into `main`, run `git switch SRTD_DT_test` after cloning and before installing the environment.
+For development, run `git switch SRTD_DT_test` after cloning and before installing the environment.
 
 To run the same demonstration from another terminal against the dashboard's default database:
 
@@ -99,7 +99,7 @@ Terminal 1, from the checkout:
 mamba run -n researchrelay researchrelay serve --host 127.0.0.1 --port 8000
 ```
 
-Open **http://127.0.0.1:8000**. In Terminal 2, `cd` into the same checkout and run the demonstration, or use the dashboard's **Run local pilot** button:
+Open **http://127.0.0.1:8000**. In Terminal 2, `cd` into the same checkout and run the demonstration, or use the dashboard's **Run literature pilot** button:
 
 ```bash
 mamba run -n researchrelay researchrelay demo
@@ -108,7 +108,7 @@ mamba run -n researchrelay python -m pip check
 mamba run -n researchrelay python scripts/smoke.py
 ```
 
-`scripts/smoke.py` starts and stops its own service on a temporary loopback port, using an isolated database/project repository. It checks HTTP startup, parallel scoring, dependent synthesis, review/revision, Git records, and the human decision. It does not alter your working-session state. The full test suite also exercises paths containing spaces and non-ASCII text, home-relative paths, interruption, and concurrency.
+`scripts/smoke.py` starts and stops its own service on a temporary loopback port, using an isolated database/project repository. It checks HTTP startup, parallel source-note processing, dependent synthesis, review/revision, Git records, and the human decision. It does not alter your working-session state. The full test suite also exercises paths containing spaces and non-ASCII text, home-relative paths, interruption, and concurrency.
 
 To build the wheel without adding a separate build tool:
 
@@ -130,7 +130,7 @@ mamba run -n researchrelay python scripts/smoke.py --browser
 
 For an existing Chrome installation, `scripts/ui_smoke.py --browser "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` selects that executable; the complete isolated-service invocation is documented in [verification](#verification-and-limits). Safari is usable as an ordinary browser, but this Chromium smoke does not automate Safari.
 
-Claude and `gh` are needed only for live execution/publication. Install/authenticate them in each participant's own environment and ensure `claude --version` and `gh --version` work in the same Terminal that starts the worker. macOS example:
+Optional live connections need their own tools: VS Code plus a signed-in extension for the editor handoff, Claude CLI for `claude-cli`, or provider credentials for API adapters. The draft-PR path additionally uses `gh`. Install/authenticate the tools you select in the same environment that starts the worker. Claude macOS example:
 
 ```bash
 export RESEARCHRELAY_TOKEN='alice-project-secret'
@@ -141,20 +141,20 @@ Replace that token and repository path with your actual project configuration. D
 
 The [macOS compatibility workflow](.github/workflows/macos.yml) runs native Python 3.12 on Apple Silicon and Intel macOS 15 runners, including tests, a wheel build, service/pilot smoke, and browser smoke. See [verification results](docs/verification.md) for actual execution results and remaining limitations; a passing dependency download on Windows alone is not macOS execution.
 
-## The pilot
+## The local literature pilot
 
-The bundled [meeting notes](examples/meeting-notes.txt) and [synthetic daily data](examples/forecast.csv) drive the following sequence:
+The bundled [meeting notes](examples/meeting-notes.txt) and [verified literature source notes](projects/agentic-collaboration/sources) drive the default workflow. Its 2026-11-04 [search record](projects/agentic-collaboration/search-record.md) records what was actually searched and inspected.
 
-1. Meeting notes become an attributable summary, explicit decisions with rationale, editable task proposals, and open questions. Demo scope approval is scripted and labeled; ordinary meeting intake requires the participant to edit and approve the proposals.
-2. Alice and Bob's simulated participant agents score separate forecasts concurrently in isolated Git worktrees. They run actual Python calculations and record data/code hashes and environment details.
-3. Carol reviews their results; only reviewed dependencies unlock the synthesis task. Synthesis pins exact versions of both result artifacts.
-4. Carol requests a justified revision: the initial comparison uses unequal dates and lacks uncertainty. Alice produces a second version using paired dates and a seeded bootstrap, with methodological limitations.
-5. Reviewed changes and completion notes enter the local project Git history. Portable meeting, task, result, review, and decision records are exported with a generated dashboard snapshot.
-6. The dashboard asks a human which next evaluation to prioritize, presenting evidence, options, and the consequences for subsequent work. The human's answer and rationale become a new decision artifact version.
+1. Meeting notes become an attributable summary, explicit decisions with rationale, editable task proposals, and open questions. Demo scope approval is scripted and labeled; ordinary meeting intake requires a participant to edit and approve proposals.
+2. Alice inventories human–AI collaboration evidence while Bob inventories multi-agent coordination evidence concurrently in isolated Git worktrees. Local Python scripts read the verified notes and record their exact data/code hashes and environment.
+3. Carol reviews the two evidence inventories. Only reviewed dependencies unlock Alice's synthesis, which pins both input artifact versions.
+4. Carol requests a justified revision because the first synthesis omits publication-status and source-access limitations. The revised synthesis distinguishes 7 published papers, 2 preprints, 2 specifications, and 1 software manual and explains the limits of abstract-based evidence.
+5. Reviewed results, source provenance, completion notes, and portable meeting/task/review/decision records enter the local Git history with a generated dashboard snapshot.
+6. The dashboard presents source coverage and asks a human which evidence gap to investigate next: update the search, audit full-text methods, or design a small-team handoff evaluation. The participant's choice and rationale become a new decision artifact version.
 
-This is **local demonstration mode**: deterministic agents, real scientific calculations, real SQLite and Git, simulated pull requests. It requires no Claude or GitHub credentials. No model calls, GitHub push, PR creation, or cloud deployment are implied by a successful local run.
+This is **local demonstration mode**: deterministic scripted agents, real note processing, real SQLite and Git, and simulated pull requests. It needs no model or GitHub credentials. It performs **no fresh literature search or live model inference** and does not push to GitHub. The source notes retain the evidence access limits of the original search; this run does not convert them into a systematic review or establish productivity gains.
 
-The bootstrap uses independent resampling of a very small synthetic daily sample. It illustrates a reviewable workflow; it does not support a scientific generalization or a productivity claim.
+The **Run literature pilot** button and `researchrelay demo` run this same workflow. Use an unbound demo database/repository: a configured shared project hides this button and rejects a local demo to preserve its scope. The separate `researchrelay literature-pilot` below demonstrates publication and handoff through a shared Git remote. Inspect the [executed example records](examples/literature-record) without running the service.
 
 ## Shared GitHub projects and participant agents
 
@@ -164,7 +164,7 @@ ResearchRelay coordinates one project per service/database, with multiple authen
 
 The initial review is in [projects/agentic-collaboration](projects/agentic-collaboration), on branch `SRTD_DT_test`. It covers human–agent collaboration, multi-agent coordination, asynchronous handoffs, shared memory, and scientific provenance. Its search log records the date, queries, source selection, and verification limits; source notes distinguish published research, preprints, and software documentation.
 
-Create a separate `.env`/runtime database for this project, preserving any forecast-pilot database:
+Use the default literature runtime paths, or choose new paths to preserve an existing working-session database:
 
 ```dotenv
 RESEARCHRELAY_PROJECT=agentic-collaboration
@@ -202,7 +202,19 @@ Participant access tokens identify trusted writers within this project; this ver
 
 ### Connect your preferred agent and complete a handoff
 
-Supported connections include installed Claude CLI, GPT through the OpenAI Responses API, an OpenAI-compatible API/local endpoint, an external command adapter, and a manual file handoff for other agents. Provider credentials remain in the participant's worker environment. A consumer chat subscription does not imply API access; obtain the provider's required API credentials and billing/access separately. The connection profile stores only model/endpoint names, an environment-variable **name**, and optional local command/tool settings.
+Supported connections include a VS Code / Copilot Agent chat file handoff, installed Claude CLI, GPT through the OpenAI Responses API, an OpenAI-compatible API/local endpoint, an external command adapter, and a manual Markdown handoff for other agents. Provider credentials remain in the participant's worker environment. A consumer chat subscription does not imply API access; obtain the provider's required API credentials and billing/access separately. The connection profile stores only model/endpoint names, an environment-variable **name**, and optional local command/tool settings.
+
+Use your signed-in VS Code extension without configuring a provider API key:
+
+```bash
+export RESEARCHRELAY_TOKEN='your-alice-project-token'
+mamba run -n researchrelay researchrelay agent configure --server http://127.0.0.1:8000 --provider vscode
+mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000 --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
+```
+
+The worker claims an approved ready task, retrieves committed context, and prints an isolated `.code-workspace` and instructions. Open that workspace, sign in to your own Copilot or other supported extension, and start Agent chat yourself. Ask the agent to read the provided instructions, write `.researchrelay-exchange/report.json`, then create `.researchrelay-exchange/REPORT_READY`. The running worker validates the report and submits it for independent review. ResearchRelay does not remotely invoke chat or copy extension credentials; selecting **My agent → VS Code** alone does not start a task. The optional `--model` is a declared editor model label, not a remote model selector. See [VS Code/Copilot handoff and restart instructions](docs/vscode.md).
+
+For an isolated, credential-free HTTP/CLI check of this report handoff, peer review, publication, and second-user retrieval, run `mamba run -n researchrelay python scripts/editor_smoke.py`. It writes a clearly scripted report and uses a temporary bare Git remote; it opens no editor and does not claim extension/model inference.
 
 Example GPT participant setup in macOS/Linux:
 
@@ -256,7 +268,7 @@ The repository previously had no binding to a particular Open Knowledge Format. 
 ```mermaid
 flowchart LR
     H[Scientist / browser] --> API[FastAPI coordination API]
-    W1[Alice's worker + Claude CLI] --> API
+    W1[Alice's worker + chosen agent] --> API
     W2[Bob's worker + own tools] --> API
     API --> DB[(SQLite: authoritative workflow state)]
     API --> A[Immutable Markdown / YAML artifacts]
@@ -269,7 +281,7 @@ flowchart LR
 ```
 
 - **One project per service/database.** Intended for a trusted small team and one service process, with SQLite WAL transactions fencing concurrent claims and submissions. This is not a multi-tenant hosted product.
-- **Coordination is separate from execution.** FastAPI serves the dashboard and workflow API. Participant workers poll persistent tasks and run in their own environments. The server's demo runner launches only the bundled synthetic experiment.
+- **Coordination is separate from execution.** FastAPI serves the dashboard and workflow API. Participant workers poll persistent tasks and run in their own environments. The server's demo runner launches only the bundled literature-note workflow.
 - **SQLite owns execution state.** Tasks, attempts, leases, events, immutable artifact versions, submissions, review records, decisions, measures, and demo job status survive browser closure and restarts. No in-memory queue owns task work.
 - **Git preserves the project record.** Immutable artifact exports, task code/results, and derived dashboard snapshots are reviewable outside the application. Editing a snapshot does not change task state. Imported artifact changes become evidence; execution or scope changes still use explicit API operations.
 - **Conservative meeting extraction.** The initial local parser recognizes explicit decision/question markers, structured task lines, and simple named assignments. Inferred owners, criteria, outputs, and dependencies are visible and editable. It preserves source notes and does not claim comprehensive natural-language understanding.
@@ -296,7 +308,7 @@ stateDiagram-v2
     running --> canceled
 ```
 
-Claims default to 120 seconds. Heartbeats renew them; only the active claim token may submit. Lease expiry fences the previous worker and consumes an attempt. A task has five attempts by default (maximum ten) and at most two requested revisions; further disagreement becomes a visible human decision. Workers stop their Claude subprocess after claim loss or execution timeout.
+Claims default to 120 seconds. Heartbeats renew them; only the active claim token may submit. Lease expiry fences the previous worker and consumes an attempt. A task has five attempts by default (maximum ten) and at most two requested revisions; further disagreement becomes a visible human decision. Workers fence submissions after claim loss or execution timeout and stop managed local subprocesses.
 
 Submissions require a durable idempotency key. The first submission, artifact, event, and task transition commit atomically; exact replays return the stored response, including after restart. Reusing the key with different content is rejected. Artifact versions are immutable and sequential. Reviews name the exact result version. Task dependencies form a validated DAG and require reviewed completion. Workers use a private, locally ignored exchange directory and commit task-specific records, allowing independent output branches to merge without shared exchange-file conflicts.
 
@@ -304,9 +316,9 @@ Input versions are pinned when work is claimed. A newer input artifact disables 
 
 The demo job launcher persists its status. Restarted service jobs are labeled `interrupted`; rerunning the pilot resumes supported stages. Arbitrary worker processes resume by polling durable task state after lease expiry. Worktrees and saved submission payloads remain available for recovery.
 
-## Claude and GitHub integration
+## Worker branches and GitHub review
 
-The installed Claude CLI is the initial execution adapter. Each participant logs in and supplies their own clone, local tools, and project token. The coordinator never needs their Claude credentials.
+Each participant supplies their own clone, configured agent connection, local tools, and project token. The coordinator stores connection metadata and does not need provider or editor credentials. The Claude CLI adapter remains available alongside the editor, API, command, and manual connections described above.
 
 ```powershell
 # In Alice's own environment and project clone:
@@ -319,7 +331,7 @@ The default Claude tools cover reading/writing artifacts. For execution, explici
 Live publication is opt-in. Configure `origin` to the explicit GitHub project, authenticate `gh` in the participant's environment, and publish a task branch through a draft PR. The adapter verifies the destination, reuses an existing open PR, and never merges; repository protection and review rules remain in force. Fetch is fast-forward only. New versions edited directly in GitHub can be fetched and imported; conflicting immutable edits and divergent branches require reconciliation.
 
 ```powershell
-mamba run -n researchrelay researchrelay publish --repo D:/research/project --github TEAM/PROJECT --branch tasks/forecast-a/attempt-1 --title 'Forecast A evaluation' --body-file proposal.md
+mamba run -n researchrelay researchrelay publish --repo D:/research/project --github TEAM/PROJECT --branch tasks/human-ai-evidence/attempt-1 --title 'Review human-agent collaboration evidence' --body-file proposal.md
 ```
 
 Run fetch/import/export on the **coordinator host** against its authoritative database and configured project-record clone. A remote participant publishes their task branch; they do not maintain a second execution-state database. The coordinator can fetch reviewed changes and export updated records on a separate records branch for another draft PR:
@@ -369,6 +381,10 @@ mamba run -n researchrelay python scripts/smoke.py --browser
 For manual inspection with a separate browser smoke script, keep an isolated service running. On macOS/Linux:
 
 ```bash
+export RESEARCHRELAY_MODE='demo'
+export RESEARCHRELAY_GITHUB_URL=''
+export RESEARCHRELAY_KNOWLEDGE_PATH=''
+export RESEARCHRELAY_TOKENS='{}'
 export RESEARCHRELAY_DB='.runtime/browser-check.db'
 export RESEARCHRELAY_REPO='.runtime/browser-check-record'
 mamba run -n researchrelay researchrelay serve --port 8767
@@ -377,6 +393,10 @@ mamba run -n researchrelay researchrelay serve --port 8767
 On Windows PowerShell, use these environment assignments instead:
 
 ```powershell
+$env:RESEARCHRELAY_MODE = 'demo'
+$env:RESEARCHRELAY_GITHUB_URL = ''
+$env:RESEARCHRELAY_KNOWLEDGE_PATH = ''
+$env:RESEARCHRELAY_TOKENS = '{}'
 $env:RESEARCHRELAY_DB = '.runtime/browser-check.db'
 $env:RESEARCHRELAY_REPO = '.runtime/browser-check-record'
 mamba run -n researchrelay researchrelay serve --port 8767
@@ -388,8 +408,10 @@ In another terminal, with that fresh service running:
 mamba run -n researchrelay python scripts/ui_smoke.py --url http://127.0.0.1:8767
 ```
 
+To retain screenshots from the managed service smoke, add `--screenshot .runtime/literature-dashboard.png` to `scripts/smoke.py --browser`.
+
 The browser script defaults to Playwright-managed Chromium on all supported platforms. To use an existing browser, add `--browser` with its executable path, such as `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` on macOS or `"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` on Windows. Use a new database/repository name for each full browser-smoke run.
 
-Known limits: one project and one coordinator process; rule-based meeting extraction; local worker worktrees rather than security sandboxes; manual reconciliation for imported task scope changes; small-team static tokens rather than institutional SSO; live model inference and distinct GitHub user credentials require a configured participant session; shared-Git transport verification is recorded separately. Package installation supports the service and worker, while the bundled pilot expects the source checkout's `examples/` directory.
+Known limits: one project and one coordinator process; rule-based meeting extraction; local worker worktrees rather than security sandboxes; manual reconciliation for imported task scope changes; small-team static tokens rather than institutional SSO; live model inference and distinct GitHub user credentials require a configured participant session; shared-Git transport verification is recorded separately. Package installation supports the service and worker, while the bundled pilot expects the source checkout's `examples/` and `projects/agentic-collaboration/sources/` directories.
 
-The most useful next step is a real two-participant session using Claude workers against a designated GitHub repository. Use the resulting clarification/review data to improve meeting extraction and task-scope editing before adding providers or orchestration complexity.
+The most useful next step is a real two-participant literature session using each scientist's signed-in editor agent or configured API/CLI worker. Record source corrections, handoff clarity, and human coordination time before making productivity claims.

@@ -1,40 +1,46 @@
 ---
-id: forecast-a
-project_id: example-project
-artifact_type: task
+project_id: agentic-collaboration
+created_at: '2026-11-04T23:00:00Z'
+updated_at: '2026-11-04T23:00:00Z'
+producing_agent: literature-example/1.0
 responsible_participant: alice
-producing_agent: local-rules-extractor/1.0
-created_at: '2026-11-03T12:00:00Z'
-updated_at: '2026-11-03T12:00:00Z'
-title: Evaluate forecast A
+format_status: provisional
+generated:
+  by: literature-example/1.0
+  at: '2026-11-04T23:00:00Z'
+sources:
+- id: vaccaro-2024-human-ai
+  resource: https://www.nature.com/articles/s41562-024-02024-1
+citations:
+- source_id: vaccaro-2024-human-ai
+  url: https://www.nature.com/articles/s41562-024-02024-1
+provenance:
+  method: Illustrative template grounded in the verified source note
+  human_reviewed: false
+id: task-literature-example
+artifact_type: task
 owner: alice
-objective: Evaluate forecast A
-dependencies: []
+objective: Inventory the cited source and its access limits
 input_refs:
-- id: meeting-14a43ac3ec32
+- id: meeting-literature-example
   version: 1
-expected_outputs:
-- metrics-a.json
 acceptance_criteria:
-- Report RMSE and bias and paired sample count
-provenance: explicit_assignment_inferred_details
-inferred_fields:
-- dependencies
-source_quote: Task forecast-a | owner=alice | Evaluate forecast A | criteria=Report
-  RMSE and bias and paired sample count | outputs=metrics-a.json
-scope_status: approved
+- Cite the primary paper
+- Distinguish design implications from measured productivity
+expected_outputs:
+- A source-grounded note with evidence limitations
 schema_version: '1.0'
 version: 1
+dependencies: []
 validation_results: []
 unresolved_questions: []
 next_actions: []
 related_files: []
 repository_commits: []
 pull_requests: []
+type: Literature Task
 ---
 
-# Approved scope example
+# Literature task example
 
-Compute RMSE, mean bias, and paired sample count for forecast A.
-
-This file illustrates a task artifact. Execution state comes from SQLite.
+Illustrative portable template for the collaborative literature-search workflow.

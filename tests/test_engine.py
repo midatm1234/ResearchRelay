@@ -14,9 +14,9 @@ def engine(tmp_path):
 
 def proposal(task_id="analysis", dependencies=None, input_refs=None, **extra):
     return dict(id=task_id, title=f"Analyze {task_id}", owner="alice",
-                objective="Compare predictions against paired observations",
-                acceptance_criteria=["Report sample count and paired RMSE"],
-                expected_outputs=["metrics.json"], dependencies=dependencies or [],
+                objective="Review literature on collaborative agentic AI",
+                acceptance_criteria=["Report verified source count and publication status"],
+                expected_outputs=["source-summary.json"], dependencies=dependencies or [],
                 input_refs=input_refs or [], **extra)
 
 
@@ -24,23 +24,23 @@ def result(task_id="analysis", version=1, **metadata):
     return {"metadata": {
         "id": f"result-{task_id}", "project_id": "test-project",
         "artifact_type": "result", "task_id": task_id, "version": version,
-        "producing_agent": "test-worker", "data": [{"uri": "synthetic://paired-observations", "n": 4}],
-        "code": {"commit": "0123456789abcdef"}, "configuration": {"metric": "RMSE"},
-        "environment": {"python": "3.12"}, "evidence": {"paired_n": 4, "rmse": 0.5},
-        "assumptions": ["Pairs are temporally aligned"], "limitations": ["Synthetic data only"],
+        "producing_agent": "test-worker", "data": [{"uri": "fixture://source-notes", "source_count": 4}],
+        "code": {"commit": "0123456789abcdef"}, "configuration": {"method": "bibliographic verification"},
+        "environment": {"python": "3.12"}, "evidence": {"source_count": 4, "published_count": 3},
+        "assumptions": ["Records identify the supplied source versions"], "limitations": ["Test source fixtures only"],
         **metadata,
-    }, "body": "# Result\n\nFour paired samples; RMSE 0.5."}
+    }, "body": "# Result\n\nFour source records; three marked published."}
 
 
 def submit(engine, task_id="analysis", version=1):
     claim = engine.claim_task(task_id, "alice-worker")
     return engine.submit_result(task_id, claim["claim_token"], f"submit-{task_id}-{version}",
-                                result(task_id, version), "Completed paired analysis")
+                                result(task_id, version), "Completed source review")
 
 
 def approve(engine, task_id="analysis", version=1):
-    return engine.review_task(task_id, "bob", "approve", "Inputs and paired sample count verified",
-                              ["RMSE reproduced; n=4"], version)
+    return engine.review_task(task_id, "bob", "approve", "Input source IDs and publication counts verified",
+                              ["Source count verified: four"], version)
 
 
 def table_count(engine, table, where="1", args=()):
@@ -136,11 +136,11 @@ def test_stale_input_before_claim_and_during_work_requires_explicit_reconciliati
     engine.create_task(**proposal(input_refs=[{"id": "source-data", "version": 1}]))
     claim = engine.claim_task("analysis", "worker")
     updated = {**source["metadata"], "version": 2}
-    engine.put_artifact(updated, "Data version 2 changes the observation mask")
+    engine.put_artifact(updated, "Data version 2 changes the publication classification")
     with pytest.raises(WorkflowError, match="Inputs changed"):
         engine.submit_result("analysis", claim["claim_token"], "stale-output", result())
     assert table_count(engine, "artifacts", "id=?", ("result-analysis",)) == 0
-    blocked = engine.block_task("analysis", claim["claim_token"], "Observation mask changed; rebase needed")
+    blocked = engine.block_task("analysis", claim["claim_token"], "Source classification changed; rebase needed")
     assert blocked["status"] == "blocked"
     with pytest.raises(WorkflowError, match="reconciled"):
         engine.retry_task("analysis")
@@ -163,7 +163,7 @@ def test_newly_pinned_dependency_result_is_checked_for_staleness_before_claim(en
     upstream_result = engine.get_artifact("result-upstream", 1)
     # Direct GitHub edits can append an artifact revision without rewriting the
     # completed task's historical result_ref. New consumers must detect it.
-    engine.put_artifact({**upstream_result["metadata"], "version": 2}, "Corrected observation pairing")
+    engine.put_artifact({**upstream_result["metadata"], "version": 2}, "Corrected publication classification")
     with pytest.raises(WorkflowError, match="stale|changed|reconcil"):
         engine.claim_task("downstream", "worker")
     assert engine.get_task("downstream")["status"] == "queued"
@@ -277,7 +277,7 @@ def test_assessment_clarity_records_a_bounded_participant_rating(engine):
 
 
 def test_repeated_meeting_request_reuses_immutable_record_and_requires_assigned_owner(engine):
-    notes = "We should investigate station coverage."
+    notes = "We should investigate literature coverage."
     initial = engine.create_meeting(notes, "first-participant")
     repeated = engine.create_meeting(notes, "second-participant")
     assert initial["artifact"] == repeated["artifact"]

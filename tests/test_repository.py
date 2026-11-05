@@ -9,8 +9,8 @@ from researchrelay.repository import Repository, RepositoryConflict, _git
 
 def record(engine):
     return engine.put_artifact({"id": "decision-note", "project_id": engine.project_id,
-        "artifact_type": "decision", "question": "Expand evaluation?", "options": ["yes", "no"],
-        "evidence": ["Short synthetic window"], "consequence": "Defines next scope"}, "# Evidence\n")
+        "artifact_type": "decision", "question": "Expand literature search?", "options": ["yes", "no"],
+        "evidence": ["Focused source coverage"], "consequence": "Defines next scope"}, "# Evidence\n")
 
 
 def test_export_detects_direct_immutable_edit(tmp_path):
@@ -72,3 +72,13 @@ def test_optimistic_repository_head_conflict(tmp_path):
     repo._commit(repo.path, "Human repository edit")
     with pytest.raises(RepositoryConflict, match="Repository changed"):
         repo.export(engine, expected_head=first["commit"])
+
+
+def test_background_export_does_not_acknowledge_human_attention(tmp_path):
+    engine = Engine(tmp_path/'state.db')
+    assert engine.dashboard('human')['changes_since_last_visit'] == []
+    record(engine)
+    Repository(tmp_path/'record').export(engine)
+    changes = engine.dashboard('human')['changes_since_last_visit']
+    assert changes, 'Exporting a derived snapshot must not mark a participant as having read new work'
+    assert engine.dashboard('human')['changes_since_last_visit'] == []

@@ -58,3 +58,14 @@ def test_cli_conflict_explains_changed_path_and_next_action(tmp_path,monkeypatch
     assert error.value.code==2
     message=capsys.readouterr().err
     assert 'HTTP 409' in message and 'projects/project/finding.md' in message and 'Read the new revision' in message
+
+
+def test_cli_vscode_profile_does_not_request_api_credentials(monkeypatch,capsys):
+    def server(request):
+        profile=json.loads(request.content)
+        assert profile['provider']=='vscode'
+        assert profile['api_key_env'] is None and profile['base_url'] is None
+        return httpx.Response(200,json={'participant':'alice','profile':profile})
+    client_factory(monkeypatch,server)
+    main(['agent','configure','--provider','vscode'])
+    assert json.loads(capsys.readouterr().out)['profile']['provider']=='vscode'

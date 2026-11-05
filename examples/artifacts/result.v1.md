@@ -1,59 +1,70 @@
 ---
-id: result-forecast-a
-project_id: example-project
-artifact_type: result
-task_id: forecast-a
+project_id: agentic-collaboration
+created_at: '2026-11-04T23:00:00Z'
+updated_at: '2026-11-04T23:00:00Z'
+producing_agent: literature-example/1.0
 responsible_participant: alice
-producing_agent: example-stdlib-worker/1.0
-objective: Evaluate forecast A
+format_status: provisional
+generated:
+  by: literature-example/1.0
+  at: '2026-11-04T23:00:00Z'
+sources:
+- id: vaccaro-2024-human-ai
+  resource: https://www.nature.com/articles/s41562-024-02024-1
+citations:
+- source_id: vaccaro-2024-human-ai
+  url: https://www.nature.com/articles/s41562-024-02024-1
+provenance:
+  method: Illustrative template grounded in the verified source note
+  human_reviewed: false
+id: result-literature-example
+artifact_type: result
+task_id: literature-example
 input_refs:
-- id: forecast-a
+- id: meeting-literature-example
   version: 1
-expected_outputs:
-- metrics-a.json
-acceptance_criteria:
-- Report RMSE and bias and paired sample count
+- id: task-literature-example
+  version: 1
 data:
-- uri: examples/illustrative-observations.csv
-  sha256: 491e63dd69f9534a6dec47fc55e444c1ab443b6f1ec81b235363518225ed3361
-  paired_days: 4
+- resource: https://www.nature.com/articles/s41562-024-02024-1
+  source_note: projects/agentic-collaboration/sources/vaccaro-2024-human-ai.md
+  sha256: af5d4865da10eff7155fdfa794781aa23297ca103994c1bb8e2bc7630bb0769e
 code:
-  implementation: sqrt(sum((prediction-observation)**2)/n); mean(prediction-observation)
-  source: This self-contained illustrative fixture; actual pilot records its code
-    commit.
+  component: researchrelay.pilot
+  method: Deterministic inventory of supplied source notes
 configuration:
-  forecast: forecast_a
-  missing_values: exclude unpaired dates
-  units: synthetic degrees
+  search_date: '2026-11-04'
+  live_search: false
+  model_inference_live: false
 environment:
-  python: '3.12'
-  dependencies: standard library
+  execution: Illustrative Markdown template; not an executed analysis
 evidence:
-  n: 4
-  rmse: 0.5431390245600108
-  bias: 0.25
-assumptions:
-- Each row represents a paired forecast and observation.
+  publication_status: published_paper
+  access: publisher full-text HTML and bibliographic record
+  finding: Human-AI combinations are task-dependent; synergy must be evaluated rather
+    than assumed.
 limitations:
-- Four synthetic dates provide no evidence of real-world forecast skill.
-validation_results:
-- Four paired rows checked.
-- RMSE and signed mean bias computed.
-related_files:
-- examples/illustrative-observations.csv
-created_at: '2026-11-03T12:00:00Z'
-updated_at: '2026-11-03T12:00:00Z'
+- A source note does not establish ResearchRelay productivity gains.
 schema_version: '1.0'
 version: 1
+objective: ''
 dependencies: []
+expected_outputs: []
+acceptance_criteria: []
+validation_results: []
 unresolved_questions: []
 next_actions: []
+related_files: []
 repository_commits: []
 pull_requests: []
+assumptions: []
+type: Literature Result
 ---
 
-# Forecast A example result
+# Literature result example
 
-RMSE: 0.543139; bias: 0.250000; paired count: 4.
+Illustrative portable template for the collaborative literature-search workflow.
 
-These are illustrative synthetic metrics, not a scientific recommendation.
+Human-AI collaboration benefits depend on the task and comparator.[^vaccaro-2024-human-ai]
+
+[^vaccaro-2024-human-ai]: [Published primary source](https://www.nature.com/articles/s41562-024-02024-1).

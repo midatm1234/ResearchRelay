@@ -1,5 +1,6 @@
 """Exercise home expansion and non-ASCII paths without requiring a particular OS."""
 import json
+from pathlib import Path
 
 from researchrelay.config import Settings
 from researchrelay.engine import Engine
@@ -32,7 +33,7 @@ def test_database_and_git_support_home_spaces_and_unicode(tmp_path, monkeypatch)
     assert repo.path == (home/'Research équipe/project record').resolve()
     engine.put_artifact({'id':'decision-method','project_id':engine.project_id,'artifact_type':'decision',
                         'question':'Comparer les résultats?','options':['Réviser la méthode'],
-                        'evidence':['Observations synthétiques'],'consequence':'Nouvelle analyse'},
+                        'evidence':['Sources bibliographiques'],'consequence':'Nouvelle analyse'},
                         '# Résultats\n\nDonnées et limites.')
     repo.export(engine)
     assert not repo.import_artifacts(engine)['conflicts']
@@ -53,3 +54,19 @@ def test_worker_can_resubmit_a_home_relative_payload(tmp_path, monkeypatch):
     assert worker.resubmit('~/submission.json','analysis') == {'status':'accepted'}
     assert requests == [('tasks/analysis/submit',payload)]
     worker.client.close()
+
+
+def test_literature_defaults_leave_an_existing_project_database_untouched(tmp_path,monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for name in ('RESEARCHRELAY_PROJECT','RESEARCHRELAY_DB','RESEARCHRELAY_REPO'):
+        monkeypatch.delenv(name,raising=False)
+    old = Engine('.runtime/state.db',project_id='previous-project')
+    old.create_task(id='prior-work',title='Existing team work',owner='alice',
+                    acceptance_criteria=['Preserve the existing result record'])
+    settings = Settings()
+    current = Engine(settings.db_path,settings.project_id)
+    assert current.project_id == 'agentic-collaboration'
+    assert current.db_path != old.db_path
+    assert settings.repo_path == Path('.runtime/literature/project-record')
+    assert current.list_tasks() == []
+    assert Engine(old.db_path,'previous-project').get_task('prior-work')['status'] == 'queued'

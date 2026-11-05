@@ -47,10 +47,12 @@ jobs:
           python -m pip check
       - name: Build application wheel
         run: python -m pip wheel --no-deps --wheel-dir .runtime/dist .
-      - name: Service and scientific workflow smoke
+      - name: Literature service and review workflow smoke
         run: python scripts/smoke.py
       - name: Shared literature handoff smoke
         run: python -m researchrelay.cli literature-pilot --workspace .runtime/ci-literature
+      - name: VS Code worker CLI and HTTP handoff smoke
+        run: python scripts/editor_smoke.py
       - name: Install portable browser
         run: python -m playwright install chromium
       - name: Browser workflow smoke

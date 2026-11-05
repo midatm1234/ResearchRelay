@@ -110,6 +110,7 @@ def main():
             expect(page.locator('#sync-details')).to_contain_text('aaaaaaaaaaaa')
             expect(page.locator('#knowledge-list')).to_contain_text('alice / alice-agent')
             expect(page.locator('#knowledge-format')).to_contain_text('Selected OKF 0.2')
+            expect(page.locator('#pilot-button')).not_to_be_visible()
             page.locator('#sync-project-button').click()
             expect(page.locator('#sync-project-button')).to_be_enabled()
             assert state['syncs']==1
@@ -132,6 +133,15 @@ def main():
             assert state['profile']['provider']=='openai-responses'
             assert state['profile']['api_key_env']=='OPENAI_API_KEY'
             assert 'api_key' not in state['profile']
+            # Switching to an editor handoff must not retain API credential metadata.
+            page.locator('#agent-profile-button').click()
+            page.get_by_role('combobox',name='Preferred agent connection').select_option('vscode')
+            expect(page.locator('.editor-handoff-help')).to_be_visible()
+            expect(page.locator('.editor-handoff-help')).to_contain_text('REPORT_READY')
+            page.get_by_role('textbox',name='Agent model ID').fill('my-editor-model')
+            page.get_by_role('button',name='Save my agent connection').click()
+            expect(page.locator('#detail-dialog')).not_to_be_visible()
+            assert state['profile']=={'provider':'vscode','model':'my-editor-model'}
             # A stale edit must retain the exact draft until the person reviews a new base.
             page.locator('.knowledge-title').first.click()
             page.get_by_role('button',name='Edit and publish a revision').click()
@@ -164,7 +174,7 @@ def main():
             assert not errors,errors
             browser.close()
         print(json.dumps({'status':'passed','mode':'mocked-backend browser UI','checks':[
-            'repository commit and attribution','forced update retrieval','own profile metadata','unauthenticated local-provider profile','stale publication draft preservation',
+            'repository commit and attribution','forced update retrieval','own profile metadata','unauthenticated local-provider profile','VS Code handoff metadata and instructions','stale publication draft preservation',
             'explicit reconciliation and normal retry','participant token switch','mobile layout'],'page_errors':errors}))
     finally:
         server.shutdown();server.server_close();thread.join(timeout=5)
@@ -218,6 +228,7 @@ def local_git_main():
                     page.add_init_script("sessionStorage.setItem('researchrelay:token','ui-human-token')")
                     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
                     page.goto(url,wait_until='networkidle')
+                    expect(page.locator('#pilot-button')).not_to_be_visible()
                     expect(page.locator('#sync-status')).to_contain_text('Synced',timeout=30_000)
                     expect(page.locator('#knowledge-list')).to_contain_text('Shared evidence')
                     expect(page.locator('#knowledge-list')).to_contain_text('alice / ui-fixture')

@@ -1,0 +1,172 @@
+{
+  "authority": "SQLite",
+  "generated_from_event_seq": 34,
+  "tasks": [
+    {
+      "id": "human-ai-evidence",
+      "title": "Inventory six source notes on human-agent collaboration, evidence quality and shared knowledge",
+      "owner": "alice",
+      "status": "completed",
+      "dependencies": [],
+      "input_refs": [
+        {
+          "id": "meeting-55484934bdfa",
+          "version": 1
+        }
+      ],
+      "result_ref": {
+        "id": "result-human-ai-evidence",
+        "version": 1
+      },
+      "revision_count": 0,
+      "completion_notes": "Read six source notes; publication/access labels and pinned provenance recorded; scripted peer review requested.",
+      "repository": [
+        {
+          "branch": "tasks/human-ai-evidence/attempt-1",
+          "commit": "592e1ba2f33ee197a6c88c2a79aceb5add34abe3",
+          "detail": "Local literature demo branch; simulated PR, no external service",
+          "pull_request": null
+        }
+      ]
+    },
+    {
+      "id": "agent-coordination",
+      "title": "Inventory six source notes on multi-agent coordination, repository workflows and reproducibility",
+      "owner": "bob",
+      "status": "completed",
+      "dependencies": [],
+      "input_refs": [
+        {
+          "id": "meeting-55484934bdfa",
+          "version": 1
+        }
+      ],
+      "result_ref": {
+        "id": "result-agent-coordination",
+        "version": 1
+      },
+      "revision_count": 0,
+      "completion_notes": "Read six source notes; publication/access labels and pinned provenance recorded; scripted peer review requested.",
+      "repository": [
+        {
+          "branch": "tasks/agent-coordination/attempt-1",
+          "commit": "42e69bb4ebac46798642ede4d23badd560624b36",
+          "detail": "Local literature demo branch; simulated PR, no external service",
+          "pull_request": null
+        }
+      ]
+    },
+    {
+      "id": "literature-synthesis",
+      "title": "Synthesize both accepted inventories and prepare a focused next-search decision",
+      "owner": "alice",
+      "status": "completed",
+      "dependencies": [
+        "human-ai-evidence",
+        "agent-coordination"
+      ],
+      "input_refs": [
+        {
+          "id": "meeting-55484934bdfa",
+          "version": 1
+        },
+        {
+          "id": "result-agent-coordination",
+          "version": 1
+        },
+        {
+          "id": "result-human-ai-evidence",
+          "version": 1
+        }
+      ],
+      "result_ref": {
+        "id": "result-literature-synthesis",
+        "version": 2
+      },
+      "revision_count": 1,
+      "completion_notes": "Revised synthesis distinguishes publication status and access limits; human chooses next search.",
+      "repository": [
+        {
+          "branch": "tasks/literature-synthesis/attempt-1",
+          "commit": "e8c776532ea96901c7838f6a1f0670194062cf21",
+          "detail": "Local literature demo; simulated review proposal",
+          "pull_request": null
+        },
+        {
+          "branch": "tasks/literature-synthesis/attempt-2",
+          "commit": "7e5d10f16b7a045e743312b86ce7526bf5ad38e2",
+          "detail": "Local literature demo; simulated review proposal",
+          "pull_request": null
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "artifact_ref": {
+        "id": "decision-70012a18c09f",
+        "version": 1
+      },
+      "consequence": "The selected option defines the next search or evaluation scope. No follow-up task is launched automatically.",
+      "created_at": "2026-11-04T23:44:22.324579+00:00",
+      "evidence": [
+        "The dated seed review covers 12 sources: 7 published papers, 2 preprints, 2 specifications and 1 manual.",
+        "Most notes use abstracts/metadata; source access and publication status are explicit in result-literature-synthesis@2.",
+        "The search is focused and non-exhaustive; no ResearchRelay productivity gain has been measured.",
+        "Evidence: both pinned inventories, the revised synthesis, and the recorded review rationale."
+      ],
+      "id": "decision-70012a18c09f",
+      "options": [
+        "Update the search for recent human-agent collaboration studies",
+        "Audit full-text methods and outcome measures",
+        "Design a small-team handoff evaluation"
+      ],
+      "participant": "human",
+      "question": "Which evidence gap should the team investigate next?",
+      "status": "open",
+      "task_id": "literature-synthesis"
+    }
+  ],
+  "metrics": [
+    {
+      "id": 1,
+      "participant": "alice",
+      "kind": "task_completion_seconds",
+      "value": 6.235000000000582,
+      "note": "human-ai-evidence",
+      "created_at": "2026-11-04T23:44:14.362396+00:00"
+    },
+    {
+      "id": 2,
+      "participant": "bob",
+      "kind": "task_completion_seconds",
+      "value": 7.1560000000026776,
+      "note": "agent-coordination",
+      "created_at": "2026-11-04T23:44:15.281347+00:00"
+    },
+    {
+      "id": 3,
+      "participant": "alice",
+      "kind": "task_completion_seconds",
+      "value": 4.140999999988708,
+      "note": "Revised literature synthesis and scripted review",
+      "created_at": "2026-11-04T23:44:22.317570+00:00"
+    },
+    {
+      "id": 4,
+      "participant": "carol",
+      "kind": "review_cycles",
+      "value": 2.0,
+      "note": "Literature synthesis reviewed twice (scripted demonstration)",
+      "created_at": "2026-11-04T23:44:22.329151+00:00"
+    },
+    {
+      "id": 5,
+      "participant": "alice",
+      "kind": "rework",
+      "value": 1.0,
+      "note": "One justified revision: publication classification and access limitations",
+      "created_at": "2026-11-04T23:44:22.332152+00:00"
+    }
+  ]
+}

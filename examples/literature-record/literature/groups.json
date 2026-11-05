@@ -1,0 +1,18 @@
+{
+  "human-ai-evidence": [
+    "vaccaro-2024-human-ai",
+    "amershi-2019-guidelines",
+    "schmidgall-2025-agent-laboratory",
+    "shao-2024-storm",
+    "liu-2024-lost-middle",
+    "w3c-2013-prov"
+  ],
+  "agent-coordination": [
+    "wu-2024-autogen",
+    "hong-2024-metagpt",
+    "fourney-2024-magentic-one",
+    "yang-2024-swe-agent",
+    "git-2026-worktree",
+    "google-2026-okf"
+  ]
+}

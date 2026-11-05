@@ -28,12 +28,14 @@ def main(argv: list[str] | None = None) -> None:
     worker.add_argument("--participant", required=True)
     worker.add_argument("--repo", required=True, help="Participant's local project clone or empty directory")
     worker.add_argument("--mode", choices=["claude", "manual"], help="Legacy explicit Claude/manual selection")
-    worker.add_argument("--provider", choices=['claude-cli','openai-responses','openai-compatible','command','manual'])
+    worker.add_argument("--provider", choices=['claude-cli','openai-responses','openai-compatible','command','manual','vscode'])
     worker.add_argument("--model")
     worker.add_argument("--base-url")
     worker.add_argument("--api-key-env", help="Provider credential environment variable name; never its value")
     worker.add_argument("--command-file", help="JSON array of argv strings for a participant-local agent")
     worker.add_argument("--once", action="store_true")
+    worker.add_argument("--open-editor", action="store_true", help="Explicitly launch VS Code for a vscode handoff")
+    worker.add_argument("--resume-handoff", help="Resume the same unexpired editor claim using its private state path")
     worker.add_argument("--timeout", type=int, default=600)
     worker.add_argument("--allowed-tools", help="Override own profile Claude tools")
     worker.add_argument("--resubmit", help="Retry exact saved submission.json after a network interruption")
@@ -77,7 +79,7 @@ def main(argv: list[str] | None = None) -> None:
         action_parser = agent_commands.add_parser(action)
         action_parser.add_argument('--server',default='http://127.0.0.1:8000')
         if action=='configure':
-            action_parser.add_argument('--provider',required=True,choices=['claude-cli','openai-responses','openai-compatible','command','manual'])
+            action_parser.add_argument('--provider',required=True,choices=['claude-cli','openai-responses','openai-compatible','command','manual','vscode'])
             action_parser.add_argument('--model')
             action_parser.add_argument('--base-url')
             action_parser.add_argument('--api-key-env')
@@ -97,8 +99,8 @@ def main(argv: list[str] | None = None) -> None:
         return
     from .config import Settings
     settings = Settings()
-    if args.command == "demo" and settings.mode != "demo":
-        parser.error("The synthetic pilot is only available with RESEARCHRELAY_MODE=demo; select a separate demo database/repository")
+    if args.command == "demo" and (settings.mode != "demo" or settings.github_url):
+        parser.error("The cached literature demo requires RESEARCHRELAY_MODE=demo and an unbound repository; select a separate demo database/repository")
     if args.command == "serve":
         if args.host not in {"127.0.0.1", "localhost", "::1"} and not settings.tokens:
             parser.error("Configure project-scoped RESEARCHRELAY_TOKENS before binding to a non-loopback interface")
@@ -110,11 +112,13 @@ def main(argv: list[str] | None = None) -> None:
         adapter = Worker(args.server, args.participant, args.repo, token=os.getenv("RESEARCHRELAY_TOKEN"),
                          mode=args.mode, timeout=args.timeout, allowed_tools=args.allowed_tools,
                          provider=args.provider,model=args.model,base_url=args.base_url,api_key_env=args.api_key_env,
-                         command=_read_command(args.command_file))
+                         command=_read_command(args.command_file),open_editor=args.open_editor)
         if args.resubmit:
             if not args.task:
                 parser.error("--resubmit requires --task")
             print(json.dumps(adapter.resubmit(args.resubmit, args.task), indent=2, default=str))
+        elif args.resume_handoff:
+            print(json.dumps(adapter.run_once(resume_handoff=args.resume_handoff),indent=2,default=str))
         else:
             adapter.run(once=args.once)
         return
@@ -127,6 +131,9 @@ def main(argv: list[str] | None = None) -> None:
         engine = Engine(args.db or settings.db_path, project_id=settings.project_id)
         repo = Repository(args.repo or settings.repo_path)
         if args.command == "demo":
+            from .sync import ProjectSync
+            if ProjectSync(settings,engine).binding:
+                parser.error("The cached literature demo requires a fresh unbound database/repository; this database is configured for a shared project")
             from .pilot import run_pilot
             outcome = run_pilot(engine, repo.path)
         elif args.command == "export":

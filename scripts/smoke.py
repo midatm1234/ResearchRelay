@@ -22,7 +22,9 @@ import httpx
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--browser', action='store_true', help='Run the full browser workflow instead of the API pilot.')
+    parser.add_argument('--screenshot', help='Keep browser screenshots at this path instead of the temporary workspace.')
     args = parser.parse_args()
+    screenshot = Path(args.screenshot).expanduser().resolve() if args.screenshot else None
     checkout = Path(__file__).resolve().parent.parent
     with tempfile.TemporaryDirectory(prefix='ResearchRelay smoke ') as directory:
         workspace = Path(directory)
@@ -30,7 +32,7 @@ def main():
             reservation.bind(('127.0.0.1', 0))
             port = reservation.getsockname()[1]
         server_url = f'http://127.0.0.1:{port}'
-        environment = dict(os.environ, RESEARCHRELAY_MODE='demo', RESEARCHRELAY_PROJECT='forecast-pilot',
+        environment = dict(os.environ, RESEARCHRELAY_MODE='demo', RESEARCHRELAY_PROJECT='agentic-collaboration',
                            RESEARCHRELAY_TOKENS='{}', RESEARCHRELAY_DB=str(workspace/'state.db'),
                            RESEARCHRELAY_REPO=str(workspace/'project record'),
                            RESEARCHRELAY_GITHUB_URL='', RESEARCHRELAY_KNOWLEDGE_PATH='')
@@ -52,7 +54,7 @@ def main():
                         client.get(route).raise_for_status()
                     if args.browser:
                         subprocess.run([sys.executable, str(checkout/'scripts/ui_smoke.py'), '--url', server_url,
-                                        '--screenshot', str(workspace/'dashboard.png')],
+                                        '--screenshot', str(screenshot or workspace/'dashboard.png')],
                                        cwd=workspace, env=environment, check=True, timeout=180)
                     else:
                         client.post('/api/pilot/run').raise_for_status()
@@ -69,12 +71,18 @@ def main():
                         dashboard = client.get('/api/dashboard').json()
                         assert len(dashboard['tasks']) == 3
                         assert all(task['status']=='completed' for task in dashboard['tasks'])
-                        synthesis = next(task for task in dashboard['tasks'] if task['id']=='synthesis')
+                        synthesis = next(task for task in dashboard['tasks'] if task['id']=='literature-synthesis')
                         assert synthesis['result_ref']['version'] == 2 and synthesis['revision_count'] == 1
                         assert len(dashboard['decisions']) == 1 and dashboard['decisions'][0]['status'] == 'open'
-                        result = client.get('/api/artifacts/result-synthesis/markdown', params={'version':2})
+                        result = client.get('/api/artifacts/result-literature-synthesis/markdown', params={'version':2})
                         result.raise_for_status()
                         assert 'schema_version:' in result.text
+                        assert 'Revised literature synthesis' in result.text
+                        evidence=client.get('/api/artifacts/result-literature-synthesis',params={'version':2}).json()['metadata']['evidence']
+                        assert evidence['source_count']==12 and evidence['access_limits_explicit']
+                        assert evidence['publication_counts']['published_paper']==7
+                        assert evidence['publication_counts']['preprint']==2
+                        assert 'Which evidence gap' in dashboard['decisions'][0]['question']
                         replay = client.post('/api/pilot/run')
                         replay.raise_for_status()
                         assert replay.json()['status'] == 'completed'

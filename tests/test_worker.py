@@ -15,9 +15,9 @@ from researchrelay.worker import Worker
 def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monkeypatch):
     engine = Engine(tmp_path / "state.db")
     source = engine.put_artifact({"id": "reference", "project_id": engine.project_id,
-        "artifact_type": "decision", "question": "Use reference observations?", "options": ["yes"],
-        "evidence": ["Synthetic pilot"], "consequence": "Defines scoring reference"}, "Reference agreed")
-    engine.create_task(id="analysis", title="Evaluate forecast", owner="alice", objective="Compute a score",
+        "artifact_type": "decision", "question": "Use the source note?", "options": ["yes"],
+        "evidence": ["Protocol fixture"], "consequence": "Defines review evidence"}, "Reference agreed")
+    engine.create_task(id="analysis", title="Review source provenance", owner="alice", objective="Summarize source evidence",
         input_refs=[{"id": "reference", "version": 1}], acceptance_criteria=["Report reproducible evidence"])
     settings = Settings(db_path=tmp_path / "state.db", repo_path=tmp_path / "record")
     adapter = Worker("http://testserver", "alice", tmp_path / "worker-record", mode="manual")
@@ -25,13 +25,13 @@ def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monk
         context = json.loads((workspace / ".researchrelay-exchange/task-context.json").read_text(encoding="utf-8"))
         assert context["input_artifacts"][0]["id"] == "reference"
         assert "claim_token" not in context["task"]
-        (workspace / "calculation.txt").write_text("RMSE = 1.0\n", encoding="utf-8")
+        (workspace / "source-summary.txt").write_text("Source evidence checked\n", encoding="utf-8")
         metadata = {"id": "result-analysis", "project_id": engine.project_id, "artifact_type": "result",
-                    "version": 1, "task_id": "analysis", "data": ["Synthetic observation"],
-                    "code": ["calculation.txt"], "configuration": {"metric": "RMSE"},
-                    "environment": {"python": "3.12"}, "evidence": {"rmse": 1.0},
-                    "related_files": ["calculation.txt"]}
-        (workspace / ".researchrelay-exchange/result.md").write_text(render_markdown(metadata, "# Score\n\nRMSE 1.0"), encoding="utf-8")
+                    "version": 1, "task_id": "analysis", "data": ["Supplied source note"],
+                    "code": ["source-summary.txt"], "configuration": {"method": "source review"},
+                    "environment": {"python": "3.12"}, "evidence": {"source_reviewed": True},
+                    "related_files": ["source-summary.txt"]}
+        (workspace / ".researchrelay-exchange/result.md").write_text(render_markdown(metadata, "# Source review\n\nSource evidence checked"), encoding="utf-8")
     monkeypatch.setattr(adapter, "_wait_for_manual", write_result)
     with TestClient(create_app(settings, engine), base_url="http://testserver/api/") as client:
         adapter.client = client
@@ -42,7 +42,7 @@ def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monk
     assert engine.get_artifact("result-analysis")["metadata"]["input_refs"] == [{"id": "reference", "version": 1}]
     from researchrelay.repository import _git
     files = _git(Path(outcome["workspace"]), "ls-tree", "-r", "--name-only", "HEAD").splitlines()
-    assert "calculation.txt" in files
+    assert "source-summary.txt" in files
     assert "task-records/analysis/v1.md" in files and "task-records/analysis/attempt-1-context.json" in files
     assert "result.md" not in files and "task-context.json" not in files
     assert not any(name.startswith(".researchrelay-exchange/") for name in files)
@@ -80,7 +80,7 @@ def test_cli_demo_refuses_live_mode(monkeypatch, capsys):
     with pytest.raises(SystemExit) as error:
         main(["demo"])
     assert error.value.code == 2
-    assert "only available with RESEARCHRELAY_MODE=demo" in capsys.readouterr().err
+    assert "requires RESEARCHRELAY_MODE=demo" in capsys.readouterr().err
 
 
 def test_independent_worker_branches_merge_without_exchange_conflicts(tmp_path, monkeypatch):

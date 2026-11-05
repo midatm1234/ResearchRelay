@@ -1,82 +1,54 @@
-# MVP verification — November 3, 2026
+# Literature-first workflow verification
 
-Verification ran on Windows with Git, the new `researchrelay` mamba environment, Python 3.12.16, and the package versions in `requirements.lock.txt`. Browser QA used installed Microsoft Edge with Playwright. Source is on `dev/agent-collaboration-mvp`; `main` preserves the initial empty-repository baseline.
+This report covers the default literature demo and VS Code editor handoff. Earlier shared-Git and native macOS results are preserved in [the archived shared-workflow report](shared-workflow-verification.md), with exact commit/run references. Those earlier passes do not verify later changes.
 
-## What was actually exercised
+## Reproduce current checks
 
-| Path | Evidence |
-| --- | --- |
-| Web service | The exact `mamba run -n researchrelay researchrelay serve --port 8000` command started successfully; health, dashboard, interface, and OpenAPI returned HTTP 200. |
-| Full CLI pilot | `researchrelay demo --db .runtime/delivery.db --repo .runtime/delivery-record` completed with real calculations and local Git history. |
-| Full browser pilot | Started the pilot from the dashboard against an isolated database/repository; observed completion and a human decision request. |
-| Portable artifacts | Five JSON Schemas, all illustrative and actual pilot example records, and pinned example references validate. Markdown download and version history were exercised. |
-| Participant worker protocol | Actual HTTP integration through the test application retrieved a task and pinned input, claimed it, wrote scientific output through the provider-independent adapter, submitted it, and recorded its branch/commit. |
-| Claude adapter | Installed Claude Code version and documented CLI interface were checked; subprocess configuration and credential-environment handling have targeted verification. No live model execution was performed. |
-| Local Git integration | Isolated branches/worktrees, scientific outputs, review/revision commits, portable record export/import, immutable-edit rejection, stale heads, and conflicting merges were exercised. |
-| GitHub integration | Explicit destination verification and draft-PR/fetch paths are implemented. No remote was supplied; no repository push, PR creation, remote merge, or external credentials were exercised. |
-| Hosting | Local runnable service only; no cloud deployment was performed. |
+From the source checkout with the `researchrelay` environment installed:
 
-## Scientific smoke result
-
-The independent initial samples contain 12 days for A and 11 for B. The reviewer requests comparable dates and uncertainty. The revised result uses 11 paired days:
-
-| Measure | Result |
-| --- | --- |
-| Paired RMSE A | 1.2030264865 |
-| Paired RMSE B | 0.9821127504 |
-| B minus A | -0.2209137361 |
-| Seeded paired-bootstrap 95% interval | [-0.9633047673, 0.4547741007] |
-| Bootstrap draws / seed | 2,000 / 1729 |
-| Synthesis review cycles / revisions | 2 / 1 |
-
-The interval crosses zero. The dashboard asks whether to expand validation, investigate the high-error event, or revise metric weighting. It does not select an experiment automatically. The small synthetic sample and IID resampling limitation are in the result record. Actual examples are in `examples/pilot-record/`; commit IDs there identify the generated local record repository.
-
-## Reliability and API verification
-
-The automated suite checks lease expiry after restart, old-worker fencing, bounded attempts, simultaneous competing claims, concurrent duplicate submissions and payload conflicts, persistence across restart, review-gated DAG dependencies, input-version pinning, stale inputs before/during execution, explicit human reconciliation without changing upstream history, cancellation, bounded review loops, unresolved disagreements, cyclic-scope rollback, versioned decision resolution, background-job interruption, project token ownership, reviewer/actor identity, artifact responsibility, named secret-field rejection, example validation, and conflicting Git updates.
-
-**Final result: 50 passed in 71.03 seconds.** Python compilation, JavaScript syntax, dependency consistency (`pip check`), and Git whitespace checks also passed.
-
-Concurrent provider-independent Alice/Bob workers also submitted separate branches that merged cleanly, preserving pre-existing project files. A repeated delivery CLI run completed with exactly four submissions, four reviews, and one decision still present.
-
-The pilot tests run the complete calculation/review/Git workflow, resume after an injected interruption before review, and repeat a completed pilot without duplicate submissions, reviews, decisions, or Git commits. The worker tests exercise HTTP exchange without external credentials. Run:
-
-```powershell
+```bash
 mamba run -n researchrelay python -m pytest -q
+mamba run -n researchrelay python -m pip check
+mamba run -n researchrelay python -m pip wheel --no-deps --wheel-dir .runtime/dist .
+mamba run -n researchrelay python scripts/smoke.py
+mamba run -n researchrelay python scripts/smoke.py --browser
+mamba run -n researchrelay python scripts/ui_shared_smoke.py
+mamba run -n researchrelay python scripts/ui_shared_smoke.py --local-git
+mamba run -n researchrelay python scripts/editor_smoke.py
+mamba run -n researchrelay researchrelay literature-pilot
 ```
 
-The test client emits one upstream Starlette/httpx deprecation warning; it does not affect service or test behavior. Python compilation and JavaScript syntax checks pass.
+Install `.[browser]` and `python -m playwright install chromium` for browser checks. These commands work without external provider/GitHub credentials and use isolated state. The service smoke explicitly disables inherited repository/token configuration. The optional direct browser script requires a fresh isolated service as documented in the README.
 
-## Browser verification
+## Expected evidence and boundaries
 
-The real-browser smoke passed the pilot, synthesis v2/v1 inspection, Markdown download, scientific decision resolution, assessment/time entry, meeting extraction, inferred-field correction, explicit scope approval, result review/revision, task search, and a 390px mobile overflow check. It reported no JavaScript page errors. Screenshots were captured at `.runtime/dashboard.png` and `.runtime/dashboard-mobile.png` and visually inspected.
+| Check | What it verifies |
+| --- | --- |
+| Default demo/API smoke | Real startup and HTTP assets; Alice/Bob concurrent source-note processing; reviewed dependencies; synthesis v1 → justified revision → v2; local Git records; exactly 12 source notes and correct publication classifications; a human next-search decision; idempotent replay. |
+| Default browser smoke | The real demo, source coverage/status/access table, result history, Markdown download, decision resolution, participant assessment, editable meeting proposals, scope approval, justified review, task search, changed-input reconciliation, and mobile layout. QA ratings/time are synthetic inputs. |
+| Shared browser/local Git | Real FastAPI plus a temporary bare Git remote, second-clone concurrent edit, retained stale draft, explicit reconciliation, normal publication, second-participant retrieval, and mobile layout. Mocked mode separately tests browser failure/interaction contracts. |
+| Shared literature pilot | Two authenticated participant command connections, current context/pinned inputs, finding publication, peer review/extension, dependency handoff, normal local Git publication, and stale edit HTTP 409. Its summary distinguishes GitHub transport and model inference. |
+| Editor/provider tests | File/report validation, handoff isolation and restart/fencing, credential handling, provider errors, and supported HTTP/subprocess contracts. Automated editor reports do not establish that an actual Copilot chat session generated them. |
+| Native macOS CI | The macOS workflow runs native arm64 and Intel tests/build/API/browser checks. Only a named successful run for the final implementation establishes those platforms were exercised. Interactive Miniforge installation and Safari remain separate. |
 
-A separate browser regression passed four checks for stale-input recovery: inspect versions, require acknowledgement, explicitly adopt reviewed pins, and confirm the task is ready. The full script also includes this regression; `--reconciliation-only` runs it independently.
+The deterministic demo inventories the verified 2026-11-04 source notes and executes reproducible local scripts. It performs no fresh literature search or live model inference. Publication status, access limits, and review outcomes remain distinct from human scientific verification. The example records are in [examples/literature-record](../examples/literature-record).
 
-Browser QA intentionally writes synthetic participant ratings and coordination time into its isolated QA database. These are test inputs, not actual participant assessments or productivity evidence. Human coordination time and comprehension remain to be measured in a working session.
+## Results for this change
 
-For reproduction, install `.[browser]`, launch a fresh isolated demo service as described in the README, and run `python scripts/ui_smoke.py`. The script accepts `--url` and `--browser`. Temporary test/QA services are stopped at handoff.
+Available Windows/AMD64 checks passed for these changes:
 
-## Remaining practical limits
+- Real isolated API smoke: startup/assets/schemas, parallel literature tasks, reviewed synthesis v2 with one revision, publication/access evidence, local Git record, human next-search decision, and idempotent replay.
+- Real managed-Chromium default browser smoke: **12 workflow checks passed**, zero JavaScript errors, including the 12-source table and 390px layout. Desktop/mobile screenshots were retained and visually inspected; the script now waits for refreshed task state before opening a newly submitted review.
+- Shared browser with mocked backend: **9 checks passed**, zero JavaScript errors, including the VS Code handoff guide and clearing API-only metadata when switching to editor handoff.
+- Shared browser with real FastAPI/local bare Git: **8 checks passed**, zero JavaScript errors, including concurrent clone changes, stale draft retention, reconciliation, normal publication, second-participant retrieval, and hiding the local demo button for a bound project.
+- `node --check researchrelay/static/app.js` passed.
 
-Use one coordinator process and one project database. Agent worktrees isolate Git changes but do not sandbox system access. The meeting extractor is conservative and rule-based. Imported Git artifacts are validated evidence; task-scope changes require explicit coordination actions. Live Claude/GitHub interoperability needs a participant-authenticated session with a designated remote repository. Productivity gains remain an evaluation question.
+The available local host is Windows. The full suite passed **159 tests, 1 skipped** in **397.54 seconds**. The skipped symlink escape check requires symlink privileges unavailable to this account. After collection, one final CLI persisted-binding guard was added and passed in a four-test focused run. The current inventory is **161 tests**. The wheel build, dependency consistency, Python compilation, and whitespace checks passed. Native macOS results for this implementation are pending CI; earlier runs are not evidence for this commit. Actual VS Code extension sign-in/Agent chat and paid model inference require participant access and must be reported separately from automated file-handoff tests.
 
-## ResearchRelay rename verification
+- Actual editor CLI/HTTP smoke passed: `python -m researchrelay` starts the coordinator and participant worker; approved scope and pinned source context create an isolated editor workspace; a scripted JSON report is validated and submitted; Bob reviews it; Alice explicitly publishes; Bob retrieves it; a stale edit returns HTTP 409. Claim/submission capabilities stay below the participant clone's private `.git` directory. No GUI, GitHub write, or extension inference is claimed.
+- A real module-service check returned HTTP 200 for health and dashboard. VS Code 1.145.0 is installed on the Windows host; generated workspace/tasks and F5 configuration were validated. An actual interactive F5/debugger session and signed-in Copilot/other extension Agent chat were not automated. Copilot is not installed in this environment; use your own extension entitlement/sign-in.
+- The example's twelve source files and every declared source/code SHA256 match the executed archive. Its linked knowledge context has 37 Markdown documents with zero unresolved links.
+- Existing project state is preserved: new defaults use `.runtime/literature/`; the demo refuses unrelated tasks/dirty record repositories and configured shared bindings. Background exports do not acknowledge a human's unread updates.
+- The fresh-search [meeting template](../examples/literature-search-meeting.md) parses into three proposed tasks with two dependencies and no recorded decisions. It requires actual web tools for fresh searching, source-verification/access notes, and an explicit blocker when tools or evidence are unavailable.
 
-After moving the project to `D:\ResearchRelay`, the renamed `researchrelay` mamba environment, Python package, CLI, configuration variables, schema branding, documentation, and browser interface were verified again. All **50 tests passed in 67.74 seconds**. The renamed CLI service started successfully, and real Edge checks passed at 1512, 1200, 1000, 768, 760, and 390 pixels without horizontal overflow or JavaScript errors. Dependency checks and JavaScript syntax checks passed. Sixteen existing local Git worktrees were repaired after the directory move; archived scientific data/code bytes and recorded hashes remain unchanged.
-
-The application source repository uses the user-selected SSH remote `git@github.com:midatm1234/new.git`. Source publication is separate from the scientific worker pilot: live Claude execution and scientific GitHub PR orchestration remain unexercised.
-
-## macOS compatibility work — November 4, 2026
-
-The local execution host is Windows 11 / AMD64 with Python 3.12.16. These local results are not macOS runtime results:
-
-- **53 automated tests passed in 73.43 seconds**, including home-relative configuration and constructor paths, repositories with spaces/non-ASCII names, UTF-8 Git output, and saved worker submissions under the home directory.
-- `python -m pip wheel --no-deps --wheel-dir .runtime/dist .` produced the platform-independent application wheel; its static interface and JSON Schemas were verified in the archive. `pip check`, Python compilation, JavaScript syntax, and whitespace checks passed.
-- `python scripts/smoke.py` passed real CLI startup, HTTP resources, parallel scoring, dependent synthesis, justified revision, Git recording, a human decision, and idempotent pilot replay. Its service runs from a temporary directory containing spaces and cleans itself up.
-- `python scripts/smoke.py --browser` passed the complete UI workflow with Playwright-managed Chromium and no page errors. It includes meeting corrections, reviews, decision resolution, assessment, mobile layout, and stale-input reconciliation. This no longer depends on a Windows Edge path.
-- Binary-only dependency downloads for CPython 3.12 succeeded for both `macosx_11_0_arm64` and `macosx_11_0_x86_64`. This checks wheel availability, not Mac installation or execution. The Windows-only Colorama pin now uses an environment marker.
-
-The new [native macOS workflow](../.github/workflows/macos.yml) verifies Python architecture and runs installation, the complete test suite, dependency checks, a wheel build, API/pilot smoke, and browser smoke on `macos-15` (arm64) and `macos-15-intel` (x86_64). Consult the [Actions runs](https://github.com/midatm1234/ResearchRelay/actions/workflows/macos.yml) for the matching commit; configuration of that matrix alone does not establish that either native run passed.
-
-The Miniforge installer itself is not exercised by this pip-based CI. Interactive native Miniforge installation, macOS 11–14, Safari automation, live Claude execution/credentials, and GitHub scientific PR orchestration remain outside these checks. No changes to archived scientific data/code bytes or their recorded hashes were made.
+The shared command-agent literature pilot also passed after the editor changes: 37 input context documents, 46 published documents, zero unresolved links, both tasks completed, and stale publication HTTP 409. This used a local bare remote; it made no GitHub write or model call.

@@ -19,30 +19,30 @@ def check_reconciliation(page, url):
     suffix = str(int(time.time()))
     artifact_id = f'ui-reconciliation-input-{suffix}'
     task_id = f'ui-reconciliation-task-{suffix}'
-    metadata = {'id': artifact_id, 'project_id': 'forecast-pilot', 'artifact_type': 'decision',
-                'question': 'Which reference calibration should be used?', 'options': ['Calibrated reference'],
-                'evidence': ['Synthetic browser QA calibration'], 'consequence': 'Changes scoring inputs.',
-                'objective': 'Reference calibration for reconciliation QA'}
-    first = page.request.post(url + '/api/artifacts', data={'metadata': metadata, 'body': '# Calibration v1'})
+    metadata = {'id': artifact_id, 'project_id': 'agentic-collaboration', 'artifact_type': 'decision',
+                'question': 'Which source classification should be used?', 'options': ['Reviewed source classification'],
+                'evidence': ['Browser QA source-status note'], 'consequence': 'Changes the evidence used by the synthesis.',
+                'objective': 'Source-status input for reconciliation QA'}
+    first = page.request.post(url + '/api/artifacts', data={'metadata': metadata, 'body': '# Source classification v1'})
     assert first.ok, first.text()
     created = page.request.post(url + '/api/tasks', data={
-        'id': task_id, 'title': 'Reconcile changed calibration', 'owner': 'alice',
-        'objective': 'Evaluate the latest reviewed calibration.',
+        'id': task_id, 'title': 'Reconcile changed source classification', 'owner': 'alice',
+        'objective': 'Use the latest reviewed publication-status classification.',
         'input_refs': [{'id': artifact_id, 'version': 1}],
-        'acceptance_criteria': ['Use the human-reviewed calibration version.'],
+        'acceptance_criteria': ['Use the human-reviewed source classification.'],
     })
     assert created.ok, created.text()
-    second = page.request.post(url + '/api/artifacts', data={'metadata': {**metadata, 'version': 2}, 'body': '# Calibration v2\n\nUpdated calibration evidence.'})
+    second = page.request.post(url + '/api/artifacts', data={'metadata': {**metadata, 'version': 2}, 'body': '# Source classification v2\n\nUpdated publication-status evidence.'})
     assert second.ok, second.text()
     page.locator('#refresh-button').click()
-    row = page.locator('.task').filter(has_text='Reconcile changed calibration')
+    row = page.locator('.task').filter(has_text='Reconcile changed source classification')
     expect(row).to_contain_text('Input changed')
     row.click()
     expect(page.locator('.reconciliation-section')).to_contain_text('Pinned version 1 → latest version 2')
     button = page.get_by_role('button', name='Use reviewed versions and queue task')
     expect(button).to_be_disabled()
     page.get_by_role('button', name='View latest · v2').click()
-    expect(page.locator('.artifact-source')).to_contain_text('Updated calibration evidence')
+    expect(page.locator('.artifact-source')).to_contain_text('Updated publication-status evidence')
     page.locator('#detail-dialog .close-dialog').click()
     row.click()
     page.get_by_role('checkbox', name='I reviewed the changed input versions').check()
@@ -82,12 +82,16 @@ def main():
         page.locator('#pilot-button').click()
         expect(page.locator('#stat-completed')).to_contain_text('3', timeout=120_000)
         expect(page.locator('.decision-card')).to_have_count(1, timeout=30_000)
-        expect(page.locator('#pilot-button')).to_contain_text('View pilot summary', timeout=30_000)
+        expect(page.locator('#pilot-button')).to_contain_text('View literature summary', timeout=30_000)
         screenshot = Path(args.screenshot)
         screenshot.parent.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(screenshot), full_page=True)
+        expect(page.locator('#source-count')).to_have_text('12 source notes')
+        expect(page.locator('#source-status-counts')).to_contain_text('Published papers: 7')
+        expect(page.locator('#source-status-counts')).to_contain_text('Preprints: 2')
+        expect(page.locator('.coverage-table tbody tr')).to_have_count(12)
         # Inspect the revised synthesis and both immutable result versions.
-        synthesis = page.locator('.task').filter(has_text='Synthesize').first
+        synthesis = page.locator('.task').filter(has_text='literature synthesis').first
         if not synthesis.count():
             synthesis = page.locator('.task').last
         synthesis.click()
@@ -102,7 +106,7 @@ def main():
         assert download.value.suggested_filename.endswith('.md')
         # Resolve a synthetic human decision in this isolated QA workspace.
         decision = page.locator('.decision-card').first
-        decision.locator('input').fill('Browser QA: retain the pilot as exploratory evidence and expand validation before selecting an experiment.')
+        decision.locator('input').fill('Browser QA: audit full-text methods before drawing conclusions from the literature snapshot.')
         decision.get_by_role('button', name='Record scientific decision').click()
         expect(page.locator('.decision-card')).to_have_count(0, timeout=15_000)
         page.locator('#coordination-time').fill('2.5')
@@ -111,46 +115,47 @@ def main():
         expect(page.locator('#stat-time')).to_contain_text('2.5', timeout=15_000)
         # Meeting intake, inferred-field correction, and explicit scope approval.
         page.locator('#meeting-button').click()
-        page.locator('#meeting-notes').fill('Decision: Audit residuals because forecast errors may be seasonal.\nAlice will inspect the residual distribution.\nQuestion: Should validation stratify by season?')
+        page.locator('#meeting-notes').fill('Decision: Audit source access because abstract-only evidence limits interpretation.\nAlice will audit the literature search exclusions.\nQuestion: Which studies need full-text review?')
         page.get_by_role('button', name='Extract meeting artifacts').click()
         expect(page.locator('#proposal-list .proposal-card')).to_have_count(1)
         expect(page.locator('#proposal-list')).to_contain_text('INFERRED DETAILS')
         card = page.locator('#proposal-list .proposal-card')
-        card.locator('[data-field=id]').fill(f'ui-residual-audit-{int(time.time())}')
+        card.locator('[data-field=id]').fill(f'ui-source-audit-{int(time.time())}')
         card.locator('[data-field=owner]').fill('bob')
-        card.locator('[data-field=acceptance_criteria]').fill('Document seasonal residual evidence and limitations.')
+        card.locator('[data-field=acceptance_criteria]').fill('Document search exclusions, inspected access, and limitations.')
         page.locator('#approve-scope-button').click()
         expect(page.locator('#meeting-dialog')).not_to_be_visible()
         expect(page.locator('.task')).to_have_count(4, timeout=15_000)
         # Review form against a task result that we submit through the worker API.
         context = page.request
         task_data = context.get(args.url + '/api/tasks').json()
-        qa_task = next(task for task in task_data if str(task['id']).startswith('ui-residual-audit'))
+        qa_task = next(task for task in task_data if str(task['id']).startswith('ui-source-audit'))
         claim = context.post(args.url + f'/api/tasks/{qa_task["id"]}/claim', data={'worker_id': 'ui-qa-bob', 'lease_seconds': 120}).json()
         token = claim.get('claim_token') or claim.get('task', {}).get('claim_token')
         metadata = {
-            'id': f'{qa_task["id"]}-result', 'project_id': 'forecast-pilot', 'artifact_type': 'result',
+            'id': f'{qa_task["id"]}-result', 'project_id': 'agentic-collaboration', 'artifact_type': 'result',
             'responsible_participant': 'bob', 'producing_agent': 'browser-qa-worker', 'task_id': qa_task['id'],
-            'data': [{'path': 'synthetic/residuals.csv', 'sha256': '0' * 64}],
-            'code': [{'path': 'synthetic/inspect.py', 'commit': 'synthetic-qa'}],
+            'data': [{'path': 'qa/search-log.md', 'mode': 'synthetic browser fixture'}],
+            'code': [{'path': 'scripts/ui_smoke.py', 'mode': 'synthetic browser fixture'}],
             'configuration': {'mode': 'synthetic browser QA'}, 'environment': {'python': '3.12', 'mode': 'synthetic'},
             'evidence': ['Synthetic QA result only'], 'input_refs': claim.get('input_refs', []),
         }
         response = context.post(args.url + f'/api/tasks/{qa_task["id"]}/submit', data={
             'claim_token': token, 'idempotency_key': qa_task['id'],
-            'artifact': {'metadata': metadata, 'body': '# Synthetic QA result\n\nResidual evidence is insufficient.'},
+            'artifact': {'metadata': metadata, 'body': '# Browser QA source audit\n\nThe exclusion and access evidence is incomplete.'},
             'completion_notes': 'Browser QA only.',
         })
         assert response.ok, response.text()
         page.locator('#refresh-button').click()
-        task_row = page.locator('.task').filter(has_text='residual distribution').last
+        task_row = page.locator('.task').filter(has_text='literature search exclusions').last
+        expect(task_row).to_contain_text('Awaiting Review')
         task_row.click()
         expect(page.locator('.review-form')).to_be_visible()
         page.locator('.review-form select').select_option('revise')
-        page.locator('.review-form textarea').last.fill('The approved acceptance criterion requires seasonal evidence. Add paired seasonal strata before interpretation.')
+        page.locator('.review-form textarea').last.fill('The approved criterion requires an explicit exclusion log and source access classifications. Record them before interpreting coverage.')
         page.get_by_role('button', name='Record review', exact=True).click()
         expect(page.locator('#detail-dialog')).not_to_be_visible()
-        page.locator('#task-search').fill('residual')
+        page.locator('#task-search').fill('search exclusions')
         expect(page.locator('.task')).to_have_count(1)
         expect(page.locator('.task')).to_contain_text('1 revision')
         page.locator('#task-search').fill('')
@@ -163,7 +168,7 @@ def main():
         page.screenshot(path=str(screenshot.with_name('dashboard-mobile.png')), full_page=True)
         assert not errors, errors
         print(json.dumps({'status': 'passed', 'browser_errors': errors, 'checks': [
-            'pilot background execution', 'dashboard completion and human decision', 'result version history',
+            'pilot background execution', 'literature coverage and next-search decision', 'result version history',
             'Markdown download', 'scientific decision resolution', 'participant assessment',
             'meeting extraction and inferred-field correction', 'scope approval', 'justified revision review',
             'task search', '390px responsive layout',

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "authority": "SQLite",
+  "files": {
+    "artifacts/decision/decision-70012a18c09f/v1.md": "0339442067124064b90fac1e4a2f4c1421d9e7576ee7e8fbd632c8338c572e6b",
+    "artifacts/meeting/meeting-55484934bdfa/v1.md": "1a3684a517a7c4f8648acbf77c4bf395a81c98aa716967da253c86d5c9df2435",
+    "artifacts/result/result-agent-coordination/v1.md": "a923f60e3aa561d8074d5d646563a514cfe9454b4c2fd31f660d2be6b3bbccf9",
+    "artifacts/result/result-human-ai-evidence/v1.md": "c9fd9614122bb17c3da9bd5005929891dc080f52477288d77a3c49f555990d4e",
+    "artifacts/result/result-literature-synthesis/v1.md": "0f213533e6ac685fa1582f5e22a595a757d8705e975c6c95d73ffd44d0c47d27",
+    "artifacts/result/result-literature-synthesis/v2.md": "772008545da91db6dcb97c1ef4f23619e34f69761d61a671e60cc3a98f1c0350",
+    "artifacts/review/review-agent-coordination-1-1314b504/v1.md": "85eabdab940cbd1369506491c17a020a36feae1e26e74e5248f27e38c33936bd",
+    "artifacts/review/review-human-ai-evidence-1-c345040d/v1.md": "3e800201a89735249b4531ee98cdb8acc4b3c64d04b9941fafaf68a55810061d",
+    "artifacts/review/review-literature-synthesis-1-e6ac3fc9/v1.md": "e7da930d30097517dc57bb4955dbbb75a71b77f97f3be377ecaa2abdb6be19fb",
+    "artifacts/review/review-literature-synthesis-2-39ac47f7/v1.md": "a6b143ad1ff498e298da872fbd70f3ba523def5e2ed7a44831632b662a15c685",
+    "artifacts/task/task-agent-coordination/v1.md": "e74f507dd45ceed813124df1aa36d302bf135d7895f3fb606f7a8927ae51db32",
+    "artifacts/task/task-human-ai-evidence/v1.md": "c2956c563e4fe1ba6783df62f253f9c36af64d224f925dae4a205049f3836de3",
+    "artifacts/task/task-literature-synthesis/v1.md": "7d13118ece63b875ceabfa0de16f3b672ae10bd3a327de7399abcd8981e1ecbf"
+  }
+}

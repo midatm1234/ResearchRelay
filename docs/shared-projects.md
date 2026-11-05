@@ -4,7 +4,7 @@ ResearchRelay runs one project per service/database. Multiple participants use i
 
 ## Set up a shared working branch
 
-Use an existing repository and branch that participants may read and publish to. This pilot uses `git@github.com:midatm1234/ResearchRelay.git`, branch `SRTD_DT_test`, and knowledge directory `projects/agentic-collaboration`. Set `RESEARCHRELAY_PROJECT=agentic-collaboration` and use an independent database so the literature project does not reuse forecast-pilot state. The full configuration example is in the README.
+Use an existing repository and branch that participants may read and publish to. This pilot uses `git@github.com:midatm1234/ResearchRelay.git`, branch `SRTD_DT_test`, and knowledge directory `projects/agentic-collaboration`. Set `RESEARCHRELAY_PROJECT=agentic-collaboration` and use the default literature database or a new database to preserve an existing session. The full configuration example is in the README.
 
 The coordinator can set repository metadata using **Configure repository** or `researchrelay project configure --server URL --url REPOSITORY --branch SRTD_DT_test --knowledge-path projects/agentic-collaboration`. The configured branch must exist. In live mode the binding targets GitHub SSH/HTTPS; demo mode additionally permits local bare repositories for reproducible tests.
 
@@ -16,10 +16,20 @@ The service host authenticates Git through its configured SSH/credential helper.
 2. Open or refresh the project. The dashboard retrieves recent committed information and reports status, branch, commit, and last check. It polls local workflow state every four seconds and checks Git on the configured interval (default 15 seconds).
 3. **Retrieve updates** or `researchrelay project sync --server URL` forces retrieval. `researchrelay project context --server URL --output context.json` saves exact context for an agent.
 4. Read the literature index, relevant source notes, synthesis, and open tasks. Each knowledge row names its responsible participant and producing agent. Workers retrieve current context again before claiming an assigned task and consume pinned versions.
-5. Configure your own profile with **My agent** or `researchrelay agent configure`; start a participant-owned worker. A profile selection alone does not run an agent. See `docs/agents.md` for the connection types and required credentials.
+5. Configure your own profile with **My agent** or `researchrelay agent configure`; start a participant-owned worker. A profile selection alone does not run an agent. See [agent connections](agents.md) for the connection types and required credentials, or [VS Code/Copilot](vscode.md) to hand off to a signed-in editor extension without a provider API key.
 6. Submit the task result for independent review, or publish a separate source note/review/extension. The record identifies the actual producer, input commit, citations, and provenance.
 
 A knowledge artifact is not automatically a human-approved task. Scientific choices and task scope remain explicit coordination operations. An AI computational result, another agent's review, and a human scientific decision are separate records.
+
+## Use your editor agent
+
+With your participant token configured, select **My agent → VS Code / Copilot**, then run the worker in your own terminal:
+
+```bash
+researchrelay worker --server http://127.0.0.1:8000 --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
+```
+
+A coordinator must first approve a task assigned to Alice. The worker retrieves current context, claims the ready task, and prints an isolated editor workspace and instructions. Start your own extension's Agent chat there; it writes `report.json` and `REPORT_READY` under `.researchrelay-exchange/`. The worker validates and submits the result for review. This uses the participant's existing extension session rather than invoking a remote chat API. See [editor handoff](vscode.md) for exact report/restart requirements. On PowerShell, use your own Windows clone path in `--repo`.
 
 ## Publish a literature finding
 

@@ -29,7 +29,7 @@ class WorkflowError(ValueError):
 
 
 class Engine:
-    def __init__(self, db_path, project_id='forecast-pilot'):
+    def __init__(self, db_path, project_id='agentic-collaboration'):
         self.db_path = Path(db_path).expanduser()
         self.project_id = project_id
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -508,7 +508,7 @@ class Engine:
                     self._save(db,task)
             self._event(db,'repository_updated',task_id,dict(branch=branch,commit=commit,pull_request=pr,detail=detail))
 
-    def dashboard(self, participant='human', since=0):
+    def dashboard(self, participant='human', since=0, mark_visit=True):
         with self._tx() as db:
             self._reap(db)
             tasks = [self._decorate(db,json.loads(r[0])) for r in db.execute('SELECT data FROM tasks')]
@@ -520,7 +520,8 @@ class Engine:
             previous = db.execute('SELECT seq FROM visits WHERE participant=?',(participant,)).fetchone()
             cursor = int(since) if since else previous[0] if previous else 0
             changes = [event for event in events if event['seq'] > cursor]
-            db.execute('INSERT OR REPLACE INTO visits VALUES(?,?)',(participant,latest))
+            if mark_visit:
+                db.execute('INSERT OR REPLACE INTO visits VALUES(?,?)',(participant,latest))
             artifacts = {}
             for row in db.execute('SELECT data FROM artifacts ORDER BY id,version'):
                 art = json.loads(row[0])

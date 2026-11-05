@@ -29,14 +29,14 @@ Agent approval and computational completion do not establish scientific validity
 The local meeting extractor supports explicit markers:
 
 ```text
-Decision: Use paired observations because missing samples can bias comparison.
-Task forecast-a | owner=alice | Compare forecast A | criteria=Report RMSE and bias | outputs=metrics-a.json
-Task forecast-b | owner=bob | Compare forecast B | criteria=Report RMSE and bias | outputs=metrics-b.json
-Task synthesis | owner=alice | Compare both forecasts | depends=forecast-a,forecast-b | criteria=Quantify uncertainty | outputs=comparison.md
-Question: Is the improvement scientifically useful?
+Decision: Distinguish publication status because preprints and software manuals are different kinds of evidence.
+Task human-ai-evidence | owner=alice | Inventory human-agent collaboration evidence | criteria=Record sources, methods, and access limitations | outputs=human-ai-evidence.json
+Task agent-coordination | owner=bob | Inventory agent coordination evidence | criteria=Record sources, methods, and access limitations | outputs=agent-coordination.json
+Task literature-synthesis | owner=alice | Synthesize reviewed evidence | depends=human-ai-evidence,agent-coordination | criteria=Separate publication status and source access limits | outputs=literature-synthesis.md
+Question: Which evidence gap should the team investigate next?
 ```
 
-Natural assignments such as “Alice will inspect station coverage” are recognized,
+Natural assignments such as “Alice will inspect source coverage” are recognized,
 but unstated criteria, IDs, outputs, or dependencies remain labeled inferred.
 Unrecognized text remains in the summary/original notes. No executable tasks are
 created until a participant edits and approves the proposed scope. If the parser
@@ -53,10 +53,15 @@ the same character set with a 96-character bound, leaving room for generated
 result/review prefixes. References use the exact artifact ID, which may differ
 from the execution task ID (the service's task definition ID is `task-<task-id>`).
 
-`examples/artifacts/` contains five small schema illustrations with four-row
-synthetic data. `examples/pilot-record/` contains actual records from an executed
-local pilot, including both synthesis result versions and their reviews. These
-are separate examples; running `researchrelay demo` generates a fresh project record.
+Schema examples are in `examples/artifacts/`; executed literature records are in
+`examples/literature-record/`. The verified literature corpus lives in `projects/agentic-collaboration/sources/`,
+with its index, search record, synthesis, questions, and proposed tasks alongside
+it. Running `researchrelay demo` creates fresh versioned execution records from
+these notes. The workflow result records data/code/configuration/environment
+hashes and the precise source-note snapshot; no live search or model execution
+is implied. Shared knowledge uses the selected OKF 0.2 specification and a
+provisional ResearchRelay profile described in [format status](open-knowledge-format.md).
+
 Direct Git imports add evidence artifacts; they never execute imported task
 definitions, apply imported review state, or resolve scientific decisions. Use
 the coordination API for those authoritative transitions.

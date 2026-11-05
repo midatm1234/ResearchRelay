@@ -1,11 +1,11 @@
-Forecast experiment pilot, 3 November 2026
+Collaborative literature search pilot, 4 November 2026
 
-Decision: Compare experiment A and experiment B against the same reference observations. Rationale: The team needs evidence before spending compute on a larger validation campaign.
-Decision: Routine scoring, paired comparisons, and documented revisions are authorized after the task scope is approved. Rationale: Scientists should focus on methodology and interpretation.
+Decision: Use the verified 2026-11-04 seed search on collaborative scientific work with agentic AI. Rationale: A dated, cited starting corpus makes source access and evidence gaps inspectable.
+Decision: Routine inventories, synthesis and justified revisions may run after the task scope is approved. Rationale: Scientists retain methodological appraisal and the choice of the next search question.
 
-TASK forecast-a | owner: alice | objective: Evaluate forecast experiment A against reference observations | outputs: RMSE, mean bias, sample size, reproducible score file | acceptance: Exclude missing values; report sample size, data/code hashes, assumptions and limitations
-TASK forecast-b | owner: bob | objective: Evaluate forecast experiment B against reference observations | outputs: RMSE, mean bias, sample size, reproducible score file | acceptance: Exclude missing values; report sample size, data/code hashes, assumptions and limitations
-TASK synthesis | owner: alice | objective: Compare forecast experiments using both accepted score artifacts | dependencies: forecast-a,forecast-b | outputs: Paired comparison, uncertainty interval, scientific decision request | acceptance: Compare identical dates; report sample size and bootstrap uncertainty; explain limitations and downstream consequences
+TASK human-ai-evidence | owner: alice | objective: Inventory six source notes on human-agent collaboration, evidence quality and shared knowledge | outputs: Cited source inventory with publication status and access limits | acceptance: Read the assigned source notes; retain source URLs and exact file hashes; distinguish supplied findings from scientific validation
+TASK agent-coordination | owner: bob | objective: Inventory six source notes on multi-agent coordination, repository workflows and reproducibility | outputs: Cited source inventory with publication status and access limits | acceptance: Read the assigned source notes; retain source URLs and exact file hashes; avoid unsupported productivity claims
+TASK literature-synthesis | owner: alice | objective: Synthesize both accepted inventories and prepare a focused next-search decision | dependencies: human-ai-evidence,agent-coordination | outputs: Evidence-led literature synthesis and human search-direction request | acceptance: Consume exact accepted inventory versions; distinguish publication classes and access limits; explain limitations and consequences for the next search
 
-Question: Is this short synthetic window sufficient to justify selecting an experiment for a larger evaluation?
-Question: How should performance on the unusual high-error day affect the next experiment?
+Question: Should the next task update the search, audit full-text methods, or evaluate a small-team handoff?
+Question: Which evidence would establish that the collaboration workflow helps scientists rather than merely completing scripted tasks?

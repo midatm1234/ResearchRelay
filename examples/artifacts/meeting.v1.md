@@ -1,124 +1,55 @@
 ---
-id: meeting-14a43ac3ec32
-project_id: example-project
+project_id: agentic-collaboration
+created_at: '2026-11-04T23:00:00Z'
+updated_at: '2026-11-04T23:00:00Z'
+producing_agent: literature-example/1.0
+responsible_participant: alice
+format_status: provisional
+generated:
+  by: literature-example/1.0
+  at: '2026-11-04T23:00:00Z'
+sources:
+- id: vaccaro-2024-human-ai
+  resource: https://www.nature.com/articles/s41562-024-02024-1
+citations:
+- source_id: vaccaro-2024-human-ai
+  url: https://www.nature.com/articles/s41562-024-02024-1
+provenance:
+  method: Illustrative template grounded in the verified source note
+  human_reviewed: false
+id: meeting-literature-example
 artifact_type: meeting
-responsible_participant: scientist
-producing_agent: local-rules-extractor/1.0
-objective: Convert meeting outcomes into editable, attributable work proposals
-summary: Forecast comparison planning meeting. Task scope requires participant approval.
+summary: Inventory cited human-agent collaboration evidence.
 decisions:
-- statement: Compare identical paired dates
-  rationale: sample mismatch can bias model comparisons.
+- text: Keep publication status and access limits visible
+  rationale: Evidence roles differ
   provenance: explicit
-  source_quote: 'Decision: Compare identical paired dates because sample mismatch
-    can bias model comparisons.'
 proposed_tasks:
-- id: forecast-a
-  title: Evaluate forecast A
+- id: literature-example
   owner: alice
-  objective: Evaluate forecast A
-  dependencies: []
-  input_refs:
-  - id: meeting-14a43ac3ec32
-    version: 1
-  expected_outputs:
-  - metrics-a.json
+  objective: Inventory the cited source note
   acceptance_criteria:
-  - Report RMSE and bias and paired sample count
-  provenance: explicit_assignment_inferred_details
-  inferred_fields:
-  - dependencies
-  source_quote: Task forecast-a | owner=alice | Evaluate forecast A | criteria=Report
-    RMSE and bias and paired sample count | outputs=metrics-a.json
-  scope_status: proposed
-- id: forecast-b
-  title: Evaluate forecast B
-  owner: bob
-  objective: Evaluate forecast B
-  dependencies: []
-  input_refs:
-  - id: meeting-14a43ac3ec32
-    version: 1
-  expected_outputs:
-  - metrics-b.json
-  acceptance_criteria:
-  - Report RMSE and bias and paired sample count
-  provenance: explicit_assignment_inferred_details
-  inferred_fields:
-  - dependencies
-  source_quote: Task forecast-b | owner=bob | Evaluate forecast B | criteria=Report
-    RMSE and bias and paired sample count | outputs=metrics-b.json
-  scope_status: proposed
-- id: synthesis
-  title: Compare both forecasts
-  owner: alice
-  objective: Compare both forecasts
-  dependencies:
-  - forecast-a
-  - forecast-b
-  input_refs:
-  - id: meeting-14a43ac3ec32
-    version: 1
-  expected_outputs:
-  - comparison.md
-  acceptance_criteria:
-  - Report paired improvement and uncertainty
-  provenance: explicit
-  inferred_fields: []
-  source_quote: Task synthesis | owner=alice | Compare both forecasts | depends=forecast-a,forecast-b
-    | criteria=Report paired improvement and uncertainty | outputs=comparison.md
-  scope_status: proposed
+  - Retain source URL and access scope
 questions:
-- question: Does this small synthetic comparison justify further validation of forecast
-    B?
+- text: Which methods need a full-text audit?
   provenance: explicit
-  source_quote: 'Question: Does this small synthetic comparison justify further validation
-    of forecast B?'
 scope_status: proposed
-unresolved_questions:
-- Does this small synthetic comparison justify further validation of forecast B?
-next_actions:
-- Correct inferred fields and explicitly approve the task scope
 schema_version: '1.0'
 version: 1
-created_at: '2026-11-03T12:00:00Z'
-updated_at: '2026-11-03T12:00:00Z'
+objective: ''
 input_refs: []
 dependencies: []
 expected_outputs: []
 acceptance_criteria: []
 validation_results: []
+unresolved_questions: []
+next_actions: []
 related_files: []
 repository_commits: []
 pull_requests: []
+type: Literature Meeting
 ---
 
-# Meeting record
+# Literature meeting example
 
-Forecast comparison planning meeting. Task scope requires participant approval.
-
-## Recorded decisions
-
-- **Explicit:** Compare identical paired dates Rationale: sample mismatch can bias model comparisons.
-  Source: Decision: Compare identical paired dates because sample mismatch can bias model comparisons.
-
-## Proposed scope — awaiting human approval
-
-- `forecast-a` — alice: Evaluate forecast A (explicit_assignment_inferred_details).
-  Confirm inferred fields: dependencies.
-- `forecast-b` — bob: Evaluate forecast B (explicit_assignment_inferred_details).
-  Confirm inferred fields: dependencies.
-- `synthesis` — alice: Compare both forecasts (explicit).
-
-## Scientific questions and ambiguities
-
-- [explicit] Does this small synthetic comparison justify further validation of forecast B?
-
-## Original notes
-
-Forecast comparison planning meeting.
-Decision: Compare identical paired dates because sample mismatch can bias model comparisons.
-Task forecast-a | owner=alice | Evaluate forecast A | criteria=Report RMSE and bias and paired sample count | outputs=metrics-a.json
-Task forecast-b | owner=bob | Evaluate forecast B | criteria=Report RMSE and bias and paired sample count | outputs=metrics-b.json
-Task synthesis | owner=alice | Compare both forecasts | depends=forecast-a,forecast-b | criteria=Report paired improvement and uncertainty | outputs=comparison.md
-Question: Does this small synthetic comparison justify further validation of forecast B?
+Illustrative portable template for the collaborative literature-search workflow.

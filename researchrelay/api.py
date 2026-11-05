@@ -425,7 +425,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None):
     def pilot(request: Request):
         human(request)
         if settings.mode != 'demo':
-            raise HTTPException(409,'Synthetic pilot is only available in explicitly labeled demo mode')
+            raise HTTPException(409,'The cached-literature demonstration is only available in explicitly labeled demo mode')
+        if synchronizer.binding:
+            raise HTTPException(409,'Use a dedicated demo database without a configured shared repository; approve real literature tasks separately for participant agents.')
         job,created = coordinator.start_job()
         if created:
             pool.submit(run_background_pilot)

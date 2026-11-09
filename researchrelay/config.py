@@ -1,5 +1,4 @@
 """Local configuration; credentials are never part of project artifacts."""
-import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,7 +15,6 @@ class Settings:
     repo_path: Path = field(default_factory=lambda: Path(os.getenv('RESEARCHRELAY_REPO', '.runtime/literature/project-record')))
     project_id: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_PROJECT', 'agentic-collaboration'))
     mode: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_MODE', 'live'))
-    tokens: dict = field(default_factory=lambda: json.loads(os.getenv('RESEARCHRELAY_TOKENS', '{}')))
     github_base: str = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_BASE', 'main'))
 
     github_url: str | None = field(default_factory=lambda: os.getenv('RESEARCHRELAY_GITHUB_URL', DEFAULT_GITHUB_URL) or None)

@@ -23,7 +23,7 @@ git ls-remote git@github.com:midatm1234/ResearchRelay.git refs/heads/SRTD_DT_tes
 
 Local services automatically reload when the application's Python files change, including after a Git pull. Refresh the browser to load the latest HTML, JavaScript, CSS, and project state. Runtime databases and Git caches are outside the watched directory. Use `researchrelay serve --no-reload` for a stable process; non-loopback services disable automatic reload by default.
 
-Run commands from the checkout. The default workspace retains its existing token/SSH integration: copy `.env.example` to `.env` and configure distinct project tokens before sharing that workspace. Use **Access** for your browser token and **My agent** for your connection. The coordinator may select a different repository/branch/directory for a personal or group project through **Configure repository** or the CLI below. A saved project binding takes precedence over startup defaults and is shared by its participants; this default workspace has one active knowledge binding. The authenticated **Projects** hub below manages additional projects, each with its own execution database and binding.
+Run commands from the checkout. Team members use **Projects** and sign in with their own GitHub accounts. **My agent** stores each participant’s connection profile. The default workspace is a local operator view; authenticated team projects have isolated execution databases and repository bindings.
 
 ### Create or join a project
 
@@ -53,15 +53,16 @@ Collaborator names are a project record only. Before another participant joins o
 Initialization commits portable `README.md`, `AGENTS.md`, `PROJECT.md`, `TASKS.md`, `MEETINGS.md`, `KNOWLEDGE.md`, `DECISIONS.md`, and an index under the chosen project folder. It preserves existing content and branch policies. Objectives remain proposals: no task, meeting agreement, scientific finding, or approval is fabricated. Partial setup exposes its operation status and recovery action. Use **Check setup status → Resume setup** to reuse the original saved request after a restart. A request that needs reconciliation must be inspected before retrying; the UI does not offer automatic resume for it. No recovery action deletes existing resources or changes the saved scope. An authenticated original actor may also resume using the API below, with their GitHub PAT read from the environment rather than a command argument:
 
 ```bash
-mamba run -n researchrelay python -c 'import os,httpx; r=httpx.post("http://127.0.0.1:8000/api/hub/operations/REQUEST_ID/resume",headers={"Authorization":"Bearer "+os.environ["RESEARCHRELAY_TOKEN"]},timeout=120,trust_env=False); r.raise_for_status(); print(r.json()["operation"]["status"])'
+mamba run -n researchrelay python -c 'import subprocess,httpx; r=httpx.post("http://127.0.0.1:8000/api/hub/operations/REQUEST_ID/resume",headers={"Authorization":"Bearer "+subprocess.check_output(["gh","auth","token","--hostname","github.com"],text=True).strip()},timeout=120,trust_env=False); r.raise_for_status(); print(r.json()["operation"]["status"])'
 ```
 
 Project cards **Open**, **Edit details**, **Refresh**, and show **Repository activity**. Metadata edits update the shared `PROJECT.md`. A second participant signs in, joins the same repository/branch/folder, and opens the same project. Its dashboard and task API live at `/projects/PROJECT_ID` and `/projects/PROJECT_ID/api`; each project has isolated workflow state, context pins, and browser catch-up state. Legacy default-workspace bearer tokens are never forwarded by the browser to these project routes. The default literature bundle stays in its original workspace; newly created projects start with an empty, explicitly proposed record.
 
-An agent worker uses its participant's own permitted GitHub PAT in `RESEARCHRELAY_TOKEN` and their actual GitHub login as `--participant`. Keep the value in a private environment or credential manager; it is an HTTP credential, separate from the worker clone's own Git authentication:
+Each worker uses the participant’s existing GitHub CLI login and actual GitHub username. Sign in once and select the managed project before starting work:
 
 ```bash
-export RESEARCHRELAY_TOKEN='YOUR_OWN_REPOSITORY_PERMITTED_GITHUB_PAT'
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
 mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000/projects/PROJECT_ID --participant YOUR_GITHUB_LOGIN --repo "$HOME/Projects/my-agent-clone" --provider vscode --once --timeout 3600
 ```
 
@@ -99,7 +100,7 @@ Open **http://127.0.0.1:8001** and choose **Run literature pilot**, or run the s
 mamba run -n researchrelay researchrelay demo --offline
 ```
 
-Both use `.runtime/offline-demo/state.db` and `.runtime/offline-demo/project-record`, separate from the shared project. Use the button or CLI once; they coordinate through that same offline database. For another independent session, pass matching `--db .runtime/session-2.db --repo .runtime/session-2-record` to both offline commands. Offline flags clear participant-token settings and only serve loopback; an existing bound database is refused rather than erased or detached. Closing a browser does not stop the service/workers; stop a service with Ctrl+C.
+Both use `.runtime/offline-demo/state.db` and `.runtime/offline-demo/project-record`, separate from the shared project. Use the button or CLI once; they coordinate through that same offline database. For another independent session, pass matching `--db .runtime/session-2.db --repo .runtime/session-2-record` to both offline commands. Offline flags disable browser OAuth and only serve loopback; an existing bound database is refused rather than erased or detached. Closing a browser does not stop the service/workers; stop a service with Ctrl+C.
 
 API documentation: **http://127.0.0.1:8000/docs** (port 8001 for the offline service). Runtime state, `.env`, and credentials are Git-ignored. An explicitly empty `RESEARCHRELAY_GITHUB_URL` disables the startup fallback for a new unbound project; it does not replace a binding already saved in that project's database.
 
@@ -138,7 +139,7 @@ cp .env.example .env
 
 If you already cloned the repository, start with `cd` into that checkout instead. If the `researchrelay` environment already exists, use `mamba run -n researchrelay python -m pip install -r requirements.lock.txt -e ".[dev]"` to update its dependencies. Quote extras such as `".[dev]"` in zsh to prevent filename expansion.
 
-Edit `.env` with your text editor. Its default `RESEARCHRELAY_MODE=live` retrieves the shared `SRTD_DT_test` knowledge branch using the host's SSH access. Set distinct participant tokens before team use. For a credential-free local pilot, use the explicit offline commands below rather than changing a shared project's binding. To keep state outside the checkout, paths in this file may use `~` and spaces, for example:
+Edit `.env` with your text editor. Its default `RESEARCHRELAY_MODE=live` retrieves the shared knowledge branch using the host’s Git access. Configure GitHub browser sign-in for team use. For a local pilot, use the explicit offline commands below. Runtime paths may use `~` and spaces, for example:
 
 ```dotenv
 RESEARCHRELAY_DB="~/Library/Application Support/ResearchRelay/state.db"
@@ -189,11 +190,12 @@ For an existing Chrome installation, `scripts/ui_smoke.py --browser "/Applicatio
 Optional live connections need their own tools: VS Code plus a signed-in extension for the editor handoff, Claude CLI for `claude-cli`, or provider credentials for API adapters. The draft-PR path additionally uses `gh`. Install/authenticate the tools you select in the same environment that starts the worker. Claude macOS example:
 
 ```bash
-export RESEARCHRELAY_TOKEN='alice-project-secret'
-mamba run -n researchrelay researchrelay worker --participant alice --repo "$HOME/Projects/team-project" --server http://127.0.0.1:8000 --once
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
+mamba run -n researchrelay researchrelay worker --participant alice --repo "$HOME/Projects/team-project" --server http://127.0.0.1:8000/projects/PROJECT_ID --once
 ```
 
-Replace that token and repository path with your actual project configuration. Default worker tools support files; authorize the scientific execution tools separately as described in [worker integration](docs/worker.md). The local demo does not exercise live Claude credentials, GitHub PR policy, or macOS privacy prompts for restricted folders.
+Use your actual GitHub login, managed project URL, and local repository path. Default worker tools support files; authorize scientific execution tools separately as described in [worker integration](docs/worker.md).
 
 The [macOS compatibility workflow](.github/workflows/macos.yml) runs native Python 3.12 on Apple Silicon and Intel macOS 15 runners, including tests, a wheel build, service/pilot smoke, and browser smoke. See [verification results](docs/verification.md) for actual execution results and remaining limitations; a passing dependency download on Windows alone is not macOS execution.
 
@@ -231,22 +233,22 @@ RESEARCHRELAY_GITHUB_URL=git@github.com:midatm1234/ResearchRelay.git
 RESEARCHRELAY_GITHUB_BRANCH=SRTD_DT_test
 RESEARCHRELAY_KNOWLEDGE_PATH=projects/agentic-collaboration
 RESEARCHRELAY_SYNC_INTERVAL=15
-RESEARCHRELAY_TOKENS={"replace-with-random-coordinator-token":"human","replace-with-random-alice-token":"alice","replace-with-random-bob-token":"bob"}
 ```
 
-Replace the token placeholders before team use. The service host's Git identity must have read/write permission for the configured repository. Existing SSH authentication or a configured Git credential helper is used; credentials are not written to shared artifacts. Branch protection and repository permissions still apply. A rejected direct publication remains an actionable error; this service does not bypass protected branches or force-push.
+Team members use GitHub sign-in and their own repository permissions. The local operator workspace uses the service host’s Git access for its configured repository. Credentials remain outside project artifacts and branch rules still apply.
 
-Start the service with the macOS/Windows commands above. Use **Access** in the dashboard to enter your participant token for that browser session. **Retrieve updates** forces a new fetch; **My agent** stores your non-secret connection profile. The shared knowledge panel shows the repository, branch, latest retrieved commit, synchronization errors, source notes, and attributed contributions.
+Start the service with the commands above. Open **Projects**, choose **Connect GitHub**, and open your project. **Retrieve updates** fetches committed knowledge; **My agent** stores the signed-in participant’s non-secret connection profile.
 
 To select a different repository, change URL, branch, and knowledge path in **Configure repository** or use the coordinator API/CLI. This changes the shared source for every participant in this project; it is not a per-user override. To explicitly select the default binding in macOS/Linux zsh or bash:
 
 ```bash
-export RESEARCHRELAY_TOKEN='your-coordinator-project-token'
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
 mamba run -n researchrelay researchrelay project configure --server http://127.0.0.1:8000 --url git@github.com:midatm1234/ResearchRelay.git --branch SRTD_DT_test --knowledge-path projects/agentic-collaboration
 mamba run -n researchrelay researchrelay project sync --server http://127.0.0.1:8000
 ```
 
-In PowerShell, set the same token with `$env:RESEARCHRELAY_TOKEN = 'your-coordinator-project-token'`. Never put a real token in a Markdown artifact or a command argument.
+For team work, create or join a project from **Projects** and use its scoped URL for CLI commands. Managed project bindings are fixed; connect another project to select a different shared source.
 
 ### Synchronization and conflict recovery
 
@@ -254,7 +256,7 @@ Opening the project, refreshing it, and starting a task retrieve committed conte
 
 Each publication pins the repository URL, branch, knowledge directory, commit, and file hashes that the participant actually read. The service preserves unrelated concurrent contributions, rejects changes to a touched file when its expected version is stale, and uses a normal push. A race at push time cannot silently replace a teammate's commit. Browser drafts remain in the editor after a conflict: retrieve the latest version, compare the text, explicitly acknowledge reconciliation, then publish against the reviewed base. If the project repository/branch/directory changes, the editor immediately clears old knowledge and preserves but disables an existing draft. Copy the text, retrieve and review the new source, then create a new contribution with the appropriate path and metadata; a draft is never automatically retargeted. Prefer a new review/extension artifact when commenting on someone else's finding.
 
-Participant access tokens identify trusted writers within this project; this version does **not** implement per-user GitHub OAuth. Service-originated commits use the service Git principal and record the responsible participant and producing agent. A participant's local worker uses that participant's own clone, tools, provider credentials, and GitHub permissions for its isolated task branches. See [shared-project operations](docs/shared-projects.md).
+GitHub sign-in identifies participants and repository permissions govern team access. A participant’s local worker uses that participant’s own clone, agent tools, and GitHub credentials. See [shared-project operations](docs/shared-projects.md).
 
 ### Connect your preferred agent and complete a handoff
 
@@ -263,9 +265,10 @@ Supported connections include a VS Code / Copilot Agent chat file handoff, insta
 Use your signed-in VS Code extension without configuring a provider API key:
 
 ```bash
-export RESEARCHRELAY_TOKEN='your-alice-project-token'
-mamba run -n researchrelay researchrelay agent configure --server http://127.0.0.1:8000 --provider vscode
-mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000 --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
+mamba run -n researchrelay researchrelay agent configure --server http://127.0.0.1:8000/projects/PROJECT_ID --provider vscode
+mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000/projects/PROJECT_ID --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
 ```
 
 The worker claims an approved ready task, retrieves committed context, and prints an isolated `.code-workspace` and instructions. Open that workspace, sign in to your own Copilot or other supported extension, and start Agent chat yourself. Ask the agent to read the provided instructions, write `.researchrelay-exchange/report.json`, then create `.researchrelay-exchange/REPORT_READY`. The running worker validates the report and submits it for independent review. ResearchRelay does not remotely invoke chat or copy extension credentials; selecting **My agent → VS Code** alone does not start a task. The optional `--model` is a declared editor model label, not a remote model selector. See [VS Code/Copilot handoff and restart instructions](docs/vscode.md).
@@ -275,10 +278,11 @@ For an isolated, credential-free HTTP/CLI check of this report handoff, peer rev
 Example GPT participant setup in macOS/Linux:
 
 ```bash
-export RESEARCHRELAY_TOKEN='your-alice-project-token'
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
 export OPENAI_API_KEY='your-own-provider-key'
-mamba run -n researchrelay researchrelay agent configure --server http://127.0.0.1:8000 --provider openai-responses --model YOUR_SUPPORTED_MODEL_ID --api-key-env OPENAI_API_KEY
-mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000 --participant alice --repo "$HOME/Projects/alice-project-clone" --once
+mamba run -n researchrelay researchrelay agent configure --server http://127.0.0.1:8000/projects/PROJECT_ID --provider openai-responses --model YOUR_SUPPORTED_MODEL_ID --api-key-env OPENAI_API_KEY
+mamba run -n researchrelay researchrelay worker --server http://127.0.0.1:8000/projects/PROJECT_ID --participant alice --repo "$HOME/Projects/alice-project-clone" --once
 ```
 
 For Claude, select `--provider claude-cli` in `agent configure` and authenticate the installed Claude CLI in that same environment. For another provider, use the compatible API or command/manual adapter as documented in [agent connections](docs/agents.md). API-based synthesis does not claim to have executed local scientific code; Claude/command workers use their explicitly authorized tools.
@@ -286,12 +290,12 @@ For Claude, select `--provider claude-cli` in `agent configure` and authenticate
 The worker retrieves the latest shared context, claims an assigned ready task, reads pinned inputs, runs the configured connection, validates the result, and submits it for independent review. Its provenance records the retrieved project commit and document hashes. A subsequent participant can retrieve that contribution and publish a review or extension:
 
 ```bash
-mamba run -n researchrelay researchrelay project context --server http://127.0.0.1:8000 --output context.json
+mamba run -n researchrelay researchrelay project context --server http://127.0.0.1:8000/projects/PROJECT_ID --output context.json
 # Prepare a validated source note, review, or synthesis in finding.md.
-mamba run -n researchrelay researchrelay project publish --server http://127.0.0.1:8000 --context context.json --file finding.md --path projects/agentic-collaboration/participant-finding.md --agent YOUR_ACTUAL_AGENT --request-id unique-stable-publication-id --message 'Add a verified literature finding'
+mamba run -n researchrelay researchrelay project publish --server http://127.0.0.1:8000/projects/PROJECT_ID --context context.json --file finding.md --path projects/agentic-collaboration/participant-finding.md --agent YOUR_ACTUAL_AGENT --request-id unique-stable-publication-id --message 'Add a verified literature finding'
 ```
 
-Then Bob uses his own project token and agent to retrieve a fresh context, inspect Alice's finding, and publish a related review/extension under a new path. Do not reuse Alice's saved context for Bob's update. The browser **New contribution** editor supports the same publication path and preserves drafts on stale edits. Complete setup and pilot commands are in [shared-project operations](docs/shared-projects.md) and [agent connections](docs/agents.md).
+Then Bob uses his own GitHub account and agent to retrieve a fresh context, inspect Alice's finding, and publish a related review/extension under a new path. Do not reuse Alice's saved context for Bob's update. The browser **New contribution** editor supports the same publication path and preserves drafts on stale edits. Complete setup and pilot commands are in [shared-project operations](docs/shared-projects.md) and [agent connections](docs/agents.md).
 
 ### Run the two-participant literature pilot
 
@@ -374,12 +378,12 @@ The demo job launcher persists its status. Restarted service jobs are labeled `i
 
 ## Worker branches and GitHub review
 
-Each participant supplies their own clone, configured agent connection, local tools, and project token. The coordinator stores connection metadata and does not need provider or editor credentials. The Claude CLI adapter remains available alongside the editor, API, command, and manual connections described above.
+Each participant supplies their own clone, configured agent connection, local tools, and GitHub account. The coordinator stores connection metadata and does not need provider or editor credentials. The Claude CLI adapter remains available alongside the editor, API, command, and manual connections described above.
 
 ```powershell
 # In Alice's own environment and project clone:
-$env:RESEARCHRELAY_TOKEN = 'alice-project-secret'
-mamba run -n researchrelay researchrelay worker --participant alice --repo D:/research/project --server http://127.0.0.1:8000 --once
+$env:RESEARCHRELAY_SERVER = "http://127.0.0.1:8000/projects/PROJECT_ID"
+mamba run -n researchrelay researchrelay worker --participant alice --repo D:/research/project --server http://127.0.0.1:8000/projects/PROJECT_ID --once
 ```
 
 The default Claude tools cover reading/writing artifacts. For execution, explicitly configure the worker's `--allowed-tools` to match authorized commands and local Claude permission rules; see [worker documentation](docs/worker.md). API-only/manual adapters can use the same task, claim, heartbeat, submit, block, and review endpoints without any provider dependency.
@@ -404,7 +408,6 @@ The Claude invocation follows its [programmatic CLI interface](https://code.clau
 
 ## Team access and data
 
-The hub uses per-user GitHub sign-in and repository permissions as described above. The legacy default workspace binds to loopback and rejects unauthenticated nonlocal API traffic. When OAuth is enabled, this legacy API requires an explicit operator/project token even on loopback, so the managed GitHub cookie cannot expose its state. For its team access, configure `RESEARCHRELAY_TOKENS` as a JSON mapping from random project tokens to participant names; `human` is the coordination role. Workers may claim and submit only their owner's tasks; review identity must match the token. All tokens belong to this single project. Use a private network and HTTPS reverse proxy for remote access. The dashboard accepts a session token without adding it to exported artifacts.
 
 Git worktrees isolate filesystem changes and branches; they are **not an OS security sandbox**. Participants should use their own container/VM or restricted account for untrusted agent work. The system trusts participants' project access. Do not expose this pilot directly to the public internet.
 
@@ -426,7 +429,7 @@ mamba run -n researchrelay python -m pytest -q
 
 The project hub adds OAuth/credential, initialization, concurrency/recovery, and two-user HTTP/local Git checks. [Project workflow verification](docs/project-workflow-verification.md) separates real transport from mocked GitHub authentication and resource operations. Native macOS (Apple Silicon/Intel), Windows, and Linux CI run the project workflows.
 
-Tests cover the scientific pilot and Git history, interrupted execution and claim fencing, competing claims, duplicate and conflicting submissions, dependency gating and stale versions, review/revision bounds, artifact validation, cancellation, repository update conflicts, direct Git imports, and API project-token scope. See [verification report](docs/verification.md) for the actual run and browser-check results. See the [shared-workflow verification report](docs/shared-workflow-verification.md) for literature, synchronization, provider, live-transport, and platform verification boundaries.
+Tests cover the scientific pilot and Git history, interrupted execution and claim fencing, competing claims, duplicate and conflicting submissions, dependency gating and stale versions, review/revision bounds, artifact validation, cancellation, repository update conflicts, direct Git imports, and GitHub identity and repository permission scope. See [verification report](docs/verification.md) for the actual run and browser-check results. See the [shared-workflow verification report](docs/shared-workflow-verification.md) for literature, synchronization, provider, live-transport, and platform verification boundaries.
 
 The environment file installs the verified versions in `requirements.lock.txt`. Optional real-browser verification uses a fresh isolated service because it writes synthetic QA records:
 
@@ -439,14 +442,12 @@ mamba run -n researchrelay python scripts/smoke.py --browser
 For manual inspection with a separate browser smoke script, keep an isolated service running. On macOS/Linux:
 
 ```bash
-export RESEARCHRELAY_TOKENS='{}'
 mamba run -n researchrelay researchrelay serve --offline-demo --db .runtime/browser-check.db --repo .runtime/browser-check-record --port 8767
 ```
 
 On Windows PowerShell, use these environment assignments instead:
 
 ```powershell
-$env:RESEARCHRELAY_TOKENS = '{}'
 mamba run -n researchrelay researchrelay serve --offline-demo --db .runtime/browser-check.db --repo .runtime/browser-check-record --port 8767
 ```
 

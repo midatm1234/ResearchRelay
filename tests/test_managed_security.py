@@ -18,8 +18,7 @@ def test_oauth_deployment_does_not_expose_legacy_loopback_api(tmp_path):
     assert client.get("/",follow_redirects=False).headers["location"]=="/projects"
     assert client.get("/api/tasks").status_code==401
     assert client.get("/api/hub/status").status_code==200
-    settings.tokens = {"legacy-operator-secret":"human"}
-    assert client.get("/api/tasks",headers={"Authorization":"Bearer legacy-operator-secret"}).status_code==200
+    assert client.get("/api/tasks",headers={"Authorization":"Bearer legacy-operator-secret"}).status_code==401
 
 def test_git_credentials_are_request_local_and_never_saved_in_configuration(tmp_path,monkeypatch):
     settings = Settings(db_path=tmp_path/"state.db",repo_path=tmp_path/"record",github_url=None)

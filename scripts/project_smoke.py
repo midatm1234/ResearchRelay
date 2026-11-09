@@ -59,7 +59,7 @@ def main():
                     prepared.write_bytes(render_knowledge(meta,body).encode())
                     def cli(actor,*args):
                         completed = subprocess.run([sys.executable,"-m","researchrelay",*args],
-                            cwd=root,env=dict(environment,RESEARCHRELAY_TOKEN="local-demo-"+actor),
+                            cwd=root,env=dict(environment,GH_TOKEN="local-demo-"+actor),
                             capture_output=True,text=True,encoding="utf-8",timeout=180)
                         assert completed.returncode==0,completed.stderr[-1200:]
                         records = []

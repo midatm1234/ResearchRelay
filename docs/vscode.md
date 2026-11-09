@@ -17,7 +17,7 @@ python -m researchrelay serve
 
 By default, the shared GitHub cowork knowledge source is `git@github.com:midatm1234/ResearchRelay.git`, branch `SRTD_DT_test`, knowledge directory `projects/agentic-collaboration`. The application checkout may be on `main` or another branch; it does not choose the knowledge branch. Read the current binding and retrieved commit with `researchrelay project context --output knowledge-context.json`. Authentication/sync failures need explicit resolution; bundled notes are not a substitute for current GitHub context.
 
-The coordinator configures distinct participant tokens privately in `.env` as described in [agent connections](agents.md). A group's existing saved binding takes precedence over defaults and blank URL environment settings. To select a different repository/branch/directory, a coordinator supplies its human token in its own terminal and changes the project binding:
+Team members sign in through **Projects → Connect GitHub**. Each worker reuses its own GitHub CLI login. Managed projects have a fixed shared binding; connect another project to select a different shared source. The command below applies only to the local operator workspace.
 
 ```bash
 researchrelay project configure --url git@github.com:YOUR_ORG/YOUR_REPO.git --branch SRTD_DT_test --knowledge-path projects/agentic-collaboration
@@ -31,13 +31,13 @@ For a credential-free cached example, explicitly select offline mode:
 python -m researchrelay serve --offline-demo
 ```
 
-In another terminal from the same checkout, `python -m researchrelay demo --offline` runs the cached literature workflow. Both commands default to `.runtime/offline-demo/state.db` and `.runtime/offline-demo/project-record`; both accept `--db PATH --repo PATH` overrides. Offline mode selects project `agentic-collaboration`, disables default GitHub fallback, and clears participant-token configuration in the current process. It does not edit your private `.env` or erase an existing saved binding. A selected database with a saved binding is rejected; choose a separate database/repository. Stop the normal service first when reusing port 8000, or choose another `serve --port` and matching worker `--server`. Normal `serve --db/--repo` overrides require `--offline-demo`; use environment/project configuration for the shared service.
+In another terminal from the same checkout, `python -m researchrelay demo --offline` runs the cached literature workflow. Both commands default to `.runtime/offline-demo/state.db` and `.runtime/offline-demo/project-record`; both accept `--db PATH --repo PATH` overrides. Offline mode selects project `agentic-collaboration`, disables default GitHub fallback, and disables browser OAuth in the current process. It does not edit your private `.env` or erase an existing saved binding. A selected database with a saved binding is rejected; choose a separate database/repository. Stop the normal service first when reusing port 8000, or choose another `serve --port` and matching worker `--server`. Normal `serve --db/--repo` overrides require `--offline-demo`; use environment/project configuration for the shared service.
 
 The offline example reads dated source notes rather than retrieving current GitHub knowledge. Keeping it separate preserves existing shared projects during upgrades. Plain `demo` still supports a deliberately configured legacy demo environment with no shared binding; a normal GitHub-backed launch requires the explicit `demo --offline` route for this cached example.
 
 ## 2. Approve a fresh task
 
-The explicit offline cached literature demo already finishes its sample tasks; starting an editor worker against that same service afterward can correctly return `idle`. Normal shared-project work uses freshly approved tasks. In the dashboard, paste the following into **Meeting to tasks**, extract, inspect/correct the draft, and explicitly approve its scope. Use a fresh task ID if it already exists, and match the owner to the participant token:
+The explicit offline cached literature demo already finishes its sample tasks; starting an editor worker against that same service afterward can correctly return `idle`. Normal shared-project work uses freshly approved tasks. In the dashboard, paste the following into **Meeting to tasks**, extract, inspect/correct the draft, and explicitly approve its scope. Use a fresh task ID if it already exists, and match the owner to the participant’s GitHub login:
 
 ```text
 Decision: Review the existing AutoGen source note before proposing changes to handoff design because claims need traceable evidence.
@@ -51,11 +51,11 @@ The meeting record becomes a pinned input artifact. The shared literature docume
 
 For a new search rather than the cached source-review exercise, edit [the proposed literature-search scope](../examples/literature-search-meeting.md): set the search date/window and inclusion rules, choose unused task IDs, and confirm Alice and Bob each have real web-search and primary-source retrieval tools in their chosen extension. Paste the edited template into **Meeting to tasks**, inspect its three proposed tasks and two dependencies, and explicitly approve the scope. The template is not evidence of meeting consensus.
 
-Run one participant worker per owner as below. The two extensions independently search and verify primary records, then hand off their search logs/source notes through report.json. After accepted versions of both results exist, the synthesis task becomes ready for Alice; start her worker again (or run it without `--once`) to consume those exact versions. A missing search tool or inaccessible evidence is a blocker to report, not permission to invent findings. Confirm tool availability before approval; if discovered after a claim, the responsible participant uses the authenticated task-block API with private claim state. Never copy claim/project tokens into agent context. The explicit offline demonstration inventories the dated seed notes and performs no live web search or model inference.
+Run one participant worker per owner as below. The two extensions independently search and verify primary records, then hand off their search logs/source notes through report.json. After accepted versions of both results exist, the synthesis task becomes ready for Alice; start her worker again (or run it without `--once`) to consume those exact versions. A missing search tool or inaccessible evidence is a blocker to report, not permission to invent findings. Confirm tool availability before approval; if discovered after a claim, the responsible participant uses the authenticated task-block API with private claim state. Never copy private claim state or GitHub credentials into agent context. The explicit offline demonstration inventories the dated seed notes and performs no live web search or model inference.
 
 ## 3. Start the participant handoff
 
-In Alice's own terminal set `RESEARCHRELAY_TOKEN` to her private project token (use `export RESEARCHRELAY_TOKEN=...` on macOS/Linux or `$env:RESEARCHRELAY_TOKEN = ...` in PowerShell; never paste a real token into a tracked file). Then:
+In Alice’s own terminal, run `gh auth login --hostname github.com` and set `RESEARCHRELAY_SERVER` to `http://127.0.0.1:8000/projects/PROJECT_ID`. Then:
 
 ```bash
 researchrelay agent configure --provider vscode
@@ -89,7 +89,7 @@ The path placeholder is the printed task worktree, not the main checkout. The pr
 
 ## Recovery and private state
 
-Claim tokens never enter the generated editor workspace, instructions, settings, context, result, or Git record. The editor adapter keeps private resumable state and its eventual submission payload under the participant clone's `.git/researchrelay-worker/`, outside the task worktree; restrict local machine access normally. No project token is passed to a launched editor. Local Git metadata is not a sandbox against a malicious extension with filesystem access, so approve only trusted extensions/tools.
+Claim tokens never enter the generated editor workspace, instructions, settings, context, result, or Git record. The editor adapter keeps private resumable state and its eventual submission payload under the participant clone's `.git/researchrelay-worker/`, outside the task worktree; restrict local machine access normally. GitHub credentials stay outside the editor handoff. Local Git metadata is not a sandbox against a malicious extension with filesystem access, so approve only trusted extensions/tools.
 
 If the worker stops, restart it promptly with the printed private state path:
 

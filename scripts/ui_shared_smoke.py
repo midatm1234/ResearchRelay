@@ -58,7 +58,7 @@ def main():
     def intercept(route):
         request=route.request
         path=urlparse(request.url).path
-        participant='bob' if request.headers.get('authorization')=='Bearer bob-project-token' else 'human'
+        participant=state.get('participant','human')
         payload=request.post_data_json if request.post_data else None
         status=200
         if path=='/api/dashboard':
@@ -231,10 +231,9 @@ def main():
             page.evaluate('refresh(true)')
             expect(page.get_by_role('button',name='Publish contribution to GitHub')).to_be_disabled()
             page.locator('#detail-dialog .close-dialog').click()
-            # Change browser participant via its own session token.
-            page.get_by_role('button',name='Access',exact=True).click()
-            page.get_by_label('Project access token').fill('bob-project-token')
-            page.get_by_role('button',name='Use for this browser session').click()
+            # The fixture simulates a different signed-in GitHub account.
+            state['participant']='bob'
+            page.evaluate('refresh(true)')
             expect(page.locator('#participant-label')).to_have_text('Bob')
             expect(page.locator('#configure-project-button')).not_to_be_visible()
             # Only the explicit unbound demo advertises the local pilot.
@@ -253,7 +252,7 @@ def main():
             browser.close()
         print(json.dumps({'status':'passed','mode':'mocked-backend browser UI','checks':[
             'repository commit and attribution','default shared source and preserved custom form binding','binding changes reload the same commit','shared knowledge excludes cached offline coverage','changed target clears context and preserves a fenced draft','publication pins observed repository','forced update retrieval','own profile metadata','unauthenticated local-provider profile','VS Code handoff metadata and instructions','stale publication draft preservation','comparison waits for a fresh context after background retrieval',
-            'explicit reconciliation and normal retry','participant token switch','explicit offline vs unbound service labels','mobile layout'],'page_errors':errors}))
+            'explicit reconciliation and normal retry','GitHub account switch','explicit offline vs unbound service labels','mobile layout'],'page_errors':errors}))
     finally:
         server.shutdown();server.server_close();thread.join(timeout=5)
 
@@ -285,7 +284,7 @@ def local_git_main():
                          RESEARCHRELAY_DB=str(temporary/'service/state.db'),RESEARCHRELAY_REPO=str(temporary/'service/record'),
                          RESEARCHRELAY_GITHUB_URL=str(remote),RESEARCHRELAY_GITHUB_BRANCH='SRTD_DT_test',
                          RESEARCHRELAY_KNOWLEDGE_PATH='projects/agentic-collaboration',RESEARCHRELAY_SYNC_INTERVAL='1',
-                         RESEARCHRELAY_TOKENS=json.dumps({'ui-human-token':'human','ui-alice-token':'alice','ui-bob-token':'bob'}))
+                         RESEARCHRELAY_GITHUB_CLIENT_ID='',RESEARCHRELAY_GITHUB_CLIENT_SECRET='')
         import socket
         with socket.socket() as reservation:
             reservation.bind(('127.0.0.1',0));port=reservation.getsockname()[1]
@@ -303,7 +302,6 @@ def local_git_main():
                 with sync_playwright() as pw:
                     browser=pw.chromium.launch(headless=True)
                     page=browser.new_page(viewport={'width':1512,'height':1100})
-                    page.add_init_script("sessionStorage.setItem('researchrelay:token','ui-human-token')")
                     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
                     page.goto(url,wait_until='networkidle')
                     expect(page.locator('#pilot-button')).not_to_be_visible()
@@ -367,11 +365,9 @@ def local_git_main():
                     committed=_git(other,'show',f'origin/SRTD_DT_test:{relative}')
                     assert 'My preserved UI draft.' in committed and 'Concurrent Bob extension.' in committed
                     assert 'human:human' in committed
-                    # Another token sees the new committed artifact and its own profile.
-                    page.get_by_role('button',name='Access',exact=True).click()
-                    page.get_by_label('Project access token').fill('ui-bob-token')
-                    page.get_by_role('button',name='Use for this browser session').click()
-                    expect(page.locator('#participant-label')).to_have_text('Bob',timeout=30_000)
+                    # A fresh operator page retrieves the committed artifact.
+                    page.reload(wait_until='networkidle')
+                    expect(page.locator('#participant-label')).to_have_text('Human',timeout=30_000)
                     page.locator('#sync-project-button').click()
                     expect(page.locator('#sync-project-button')).to_be_enabled(timeout=30_000)
                     expect(page.locator('#sync-status')).to_contain_text('Synced',timeout=30_000)
@@ -385,7 +381,7 @@ def local_git_main():
                 time.sleep(1)  # Drain any already-started local Git retrieval before Windows shutdown.
                 print(json.dumps({'status':'passed','mode':'real service and local bare Git remote; no external model calls',
                                   'checks':['project retrieval','own profile metadata','concurrent clone update','stale draft retained',
-                                            'exact rejected submission and fresh comparison commit/hash','explicit merged reconciliation','normal Git publication','second participant retrieval','mobile layout'],
+                                            'exact rejected submission and fresh comparison commit/hash','explicit merged reconciliation','normal Git publication','fresh operator retrieval','mobile layout'],
                                   'page_errors':errors}))
             except BaseException:
                 log.flush();log.seek(0);print(log.read(),file=sys.stderr)

@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from researchrelay.api import create_app
+from github_fixture import authenticated_app
 from researchrelay.config import Settings
 from researchrelay.engine import Engine
 from researchrelay.knowledge import render_knowledge
@@ -44,15 +45,15 @@ def shared(tmp_path):
     git(seed,"push","origin",BRANCH)
     settings = Settings(db_path=tmp_path/"state.db",repo_path=tmp_path/"coordinator"/"records",project_id=PROJECT,
                         github_url=str(remote),github_branch=BRANCH,knowledge_path=PREFIX,
-                        tokens={"human-secret":"human","alice-secret":"alice","bob-secret":"bob"},mode="demo")
+                        mode="demo")
     engine = Engine(settings.db_path,PROJECT)
-    app = create_app(settings,engine)
+    app = authenticated_app(settings,engine)
     with TestClient(app) as client:
         yield dict(client=client,engine=engine,sync=app.state.project_sync,remote=remote,seed=seed,settings=settings)
 
 
 def headers(identity):
-    return {"Authorization":f"Bearer {identity}-secret"}
+    return {"Authorization":f"Bearer github-{identity}-test-token"}
 
 
 def context(shared,identity="alice"):
@@ -77,7 +78,7 @@ def test_relative_repository_paths_support_retrieval_and_publication(shared, tmp
     monkeypatch.chdir(tmp_path)
     settings = Settings(db_path=shared["engine"].db_path, repo_path=Path(repo_path), project_id=PROJECT,
                         github_url=str(shared["remote"]), github_branch=BRANCH, knowledge_path=PREFIX,
-                        mode="demo", tokens={})
+                        mode="demo")
     sync = ProjectSync(settings, shared["engine"])
     first = sync.context("alice")
     assert first["sync"]["status"] == "synced"

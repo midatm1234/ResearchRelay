@@ -305,7 +305,7 @@ class ProjectHub:
                 project = self.record(project_id)
                 path = self.root/"projects"/hashlib.sha256(project_id.encode()).hexdigest()[:16]
                 settings = replace(self.settings,db_path=path/"state.db",repo_path=path/"record",
-                    project_id=project.get("artifact_project_id",project_id),tokens={},github_url=project["clone_url"],
+                    project_id=project.get("artifact_project_id",project_id),github_url=project["clone_url"],
                     github_branch=project["branch"],knowledge_path=project["knowledge_path"])
                 engine = Engine(settings.db_path,settings.project_id)
                 sync = ManagedProjectSync(settings,engine)

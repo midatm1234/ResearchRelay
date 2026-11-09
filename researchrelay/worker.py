@@ -29,6 +29,8 @@ class Worker:
                  model: str | None = None, base_url: str | None = None,
                  api_key_env: str | None = None, command: list[str] | None = None,
                  open_editor: bool = False):
+        from .client_auth import github_token
+        token = token or github_token(server)
         self.client = httpx.Client(base_url=server.rstrip("/") + "/api/", timeout=30,
                                    headers={"Authorization": f"Bearer {token}"} if token else {})
         self.participant = participant
@@ -306,12 +308,6 @@ class Worker:
         authorization = self.client.headers.get('Authorization','')
         if authorization.startswith('Bearer ') and 8<=len(authorization[7:])<=4096:
             candidates.append(authorization[7:].encode('utf-8'))
-        try:
-            tokens = json.loads(os.getenv('RESEARCHRELAY_TOKENS','{}'))
-            if isinstance(tokens,dict):
-                candidates.extend(value.encode('utf-8') for value in tokens if isinstance(value,str) and 8<=len(value)<=4096)
-        except ValueError:
-            pass
         candidates = tuple(set(candidates))
         guard_output_bytes(result_text.encode('utf-8'),candidates)
         for name in files:

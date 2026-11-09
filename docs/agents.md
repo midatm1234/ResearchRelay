@@ -1,30 +1,23 @@
 # Participant-owned agent connections
 
-Each participant uses a project-scoped ResearchRelay token and their own execution environment. The service stores only the participant's provider selection, model identifier, endpoint, credential **environment variable name**, and optional executable argument array. Provider credential values stay on the worker machine. Commands and model calls never execute on the coordination server.
+Each participant uses their own GitHub identity and execution environment. The service stores only the participant's provider selection, model identifier, endpoint, credential **environment variable name**, and optional executable argument array. Provider credential values stay on the worker machine. Commands and model calls never execute on the coordination server.
 
 A consumer ChatGPT or Claude chat subscription is not evidence of API access. Confirm the provider's account entitlements separately. OpenAI Responses requires a usable API credential and access to the chosen model; any account-specific credits do not create a key automatically. The Claude CLI uses that participant's own supported CLI authentication. No provider keys are necessary for VS Code editor handoffs, manual adapters or a local compatible server that permits unauthenticated loopback requests.
 
 ## Authenticate the participant
 
-The coordinator configures `RESEARCHRELAY_TOKENS` in its private `.env` as a mapping of random tokens to participant identities. For example, Alice and Bob receive different tokens; neither token belongs in repository files, command arguments, chat prompts, or agent profiles. The token determines whose profile is read or written and whose tasks can be claimed. Run commands from a trusted project checkout and keep this terminal's environment private.
-
-macOS/Linux:
+Sign in through **Projects → Connect GitHub** with your own GitHub account. For workers and CLI commands, sign in through GitHub CLI and select your managed project:
 
 ```bash
-export RESEARCHRELAY_TOKEN='ALICE_PROJECT_TOKEN'
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
 ```
 
-Windows PowerShell:
-
-```powershell
-$env:RESEARCHRELAY_TOKEN = 'ALICE_PROJECT_TOKEN'
-```
-
-A participant worker's `--participant alice` must match their configured token identity. A separate local demo coordinator can use `--mode manual` without tokens; shared multi-user use should configure distinct tokens.
+PowerShell uses `$env:RESEARCHRELAY_SERVER = 'http://127.0.0.1:8000/projects/PROJECT_ID'`. CLI commands reuse the existing GitHub login. Automation can use the standard `GH_TOKEN` or `GITHUB_TOKEN` environment variable for its own GitHub authorization. The worker’s `--participant` must be its actual GitHub login. Provider and editor credentials stay in the participant’s environment.
 
 ## Configure your connection
 
-All commands below accept `--server http://127.0.0.1:8000` (the default). Connection profiles belong to the authenticated user. `researchrelay agent show` retrieves your current profile.
+Commands below use `RESEARCHRELAY_SERVER`; an explicit `--server` overrides it. Connection profiles belong to the authenticated user. `researchrelay agent show` retrieves your current profile.
 
 ### Claude CLI
 
@@ -58,7 +51,7 @@ researchrelay agent configure --provider openai-compatible --model YOUR_LOCAL_MO
 researchrelay worker --participant bob --repo "$HOME/Projects/team-worker-bob" --once
 ```
 
-Use Bob's token in Bob's terminal. A remote endpoint requires HTTPS; credentials, when needed, are read from the `--api-key-env` variable on that worker. Loopback HTTP can be used for a local server. Compatibility is an implemented protocol adapter, not a claim that every third-party model or server has been tested. Unsupported JSON modes, missing models, invalid JSON, quota errors, and provider refusal are visible execution blockers.
+Use Bob’s GitHub login in Bob’s terminal. A remote endpoint requires HTTPS; credentials, when needed, are read from the `--api-key-env` variable on that worker. Loopback HTTP can be used for a local server. Compatibility is an implemented protocol adapter, not a claim that every third-party model or server has been tested. Unsupported JSON modes, missing models, invalid JSON, quota errors, and provider refusal are visible execution blockers.
 
 ### Other executable agents
 
@@ -84,7 +77,7 @@ The process receives the task, exact input artifacts, and synchronized project c
 }
 ```
 
-The command is an argument array, not a shell string. ResearchRelay strips coordination-token settings from its environment. Provider-specific credentials may remain because the participant's own tool needs them. Do not put secrets in the argument array; use environment variables or the provider's normal credential manager. An agent command can run its own authorized tools, but a report by itself does not establish that any computation was performed.
+The command is an argument array, not a shell string. ResearchRelay strips ResearchRelay settings from its environment. Provider-specific credentials may remain because the participant's own tool needs them. Do not put secrets in the argument array; use environment variables or the provider's normal credential manager. An agent command can run its own authorized tools, but a report by itself does not establish that any computation was performed.
 
 ### VS Code with Copilot or another extension
 
@@ -121,7 +114,7 @@ Bob retrieves the next committed state with `researchrelay project context --out
 - A stopped worker's lease expires; another attempt may claim the task within its retry budget. `.researchrelay-exchange/submission.json` contains a sensitive expiring claim token and stays locally Git-excluded for non-editor adapters. The VS Code adapter instead keeps both resumable claim state and submission payload below the participant clone’s `.git/researchrelay-worker/`, outside the editor worktree. Retry its exact payload with `worker --resubmit PATH --task TASK` after an ambiguous network response; do not generate a new completion to recover a successful submission.
 - Before committing declared task outputs, the worker checks rendered results, context, and output files for recognizable key/private-key patterns and configured local credential values. Unexpected staged files are blocked rather than silently included. Private submission files are excluded from this scan and from Git. This is a focused guard, not a complete detector for arbitrary secrets; repository secret controls and participant review remain necessary.
 - Provider errors share a sanitized diagnosis and create a blocker; raw provider response bodies and command output are not copied into the shared project. Correct missing credentials/model access locally, then have a coordinator authorize a bounded retry. In-flight API requests are bounded by the worker timeout; a lost lease prevents their output from being submitted.
-- Agent profiles are application identities, not automatic GitHub OAuth permission delegation. Own Git access and the project's configured publication identity must be provisioned deliberately. Never share an SSH key, provider key, or a coordinator token to make a test pass.
+- Agent profiles are application identities, not automatic GitHub OAuth permission delegation. Own Git access and the project's configured publication identity must be provisioned deliberately. Each participant retains their own GitHub, SSH, and provider credentials.
 - The portable Markdown publishing profile is provisional on an explicitly selected OKF specification. See [format status](open-knowledge-format.md). A provider's schema-valid output is not evidence that its citations, calculations, or scientific interpretation are correct; independent review is still required.
 
 Credential-free tests exercise mocked OpenAI/compatible HTTP contracts, real local command execution, provider errors, and the task/artifact protocol. Live provider inference requires that participant's configured credentials/model access and must be reported separately from these tests. The literature search itself uses verified primary sources, not a provider-generated bibliography presented as verified evidence.

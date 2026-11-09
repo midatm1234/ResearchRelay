@@ -95,7 +95,7 @@ def test_missing_model_key_and_lost_claim_fail_before_network(monkeypatch):
 @pytest.mark.parametrize('profile',[
     {'provider':'openai-responses','api_key':'secret'},
     {'provider':'openai-responses','api_key_env':'sk-secret-value'},
-    {'provider':'openai-responses','api_key_env':'RESEARCHRELAY_TOKENS'},
+    {'provider':'openai-responses','api_key_env':'RESEARCHRELAY_GITHUB_CLIENT_SECRET'},
     {'provider':'openai-compatible','base_url':'https://secret@example.org/v1'},
     {'provider':'openai-compatible','base_url':'https://example.org/v1?api_key=secret'},
     {'provider':'command','command':['tool','--api-key','secret']},

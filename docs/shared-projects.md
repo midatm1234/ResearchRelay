@@ -1,6 +1,6 @@
 # Shared project operation
 
-ResearchRelay runs one project per service/database. Multiple participants use individual project tokens; they can choose different agents and environments. Committed Markdown is the shared knowledge record. SQLite owns execution state, claims, attempts, results, and reviews. Source code/large datasets stay in their appropriate repositories/storage, with immutable references in the records.
+The Projects hub coordinates isolated projects backed by shared GitHub records. Each participant signs in with their own GitHub account and repository permissions. SQLite owns execution state; committed Markdown preserves shared knowledge.
 
 ## Default knowledge base and other projects
 
@@ -8,7 +8,7 @@ A new service defaults to `git@github.com:midatm1234/ResearchRelay.git`, branch 
 
 A binding already saved in the project database takes precedence over these startup defaults, including when the URL environment variable is blank. An explicit empty `RESEARCHRELAY_GITHUB_URL` disables the fallback only for a new unbound project. New defaults do not erase task state, cached records, or a group's chosen repository.
 
-An individual can run a personal project; a group can share one service with distinct participant tokens. To create a separate project, select new `RESEARCHRELAY_DB`, `RESEARCHRELAY_REPO`, and `RESEARCHRELAY_PROJECT` values and supply that project's repository/branch/knowledge path. One active binding is shared by all participants in a project. There is no per-user override that redirects other group members' knowledge source.
+Create or join a personal or team project from **Projects**. Each managed project has one repository/branch/directory binding shared by its participants and an isolated execution database. Its dashboard and API live under `/projects/PROJECT_ID`.
 
 The project coordinator can change that binding using **Configure repository** or:
 
@@ -16,15 +16,15 @@ The project coordinator can change that binding using **Configure repository** o
 researchrelay project configure --server http://127.0.0.1:8000 --url git@github.com:YOUR_ORG/YOUR_REPO.git --branch YOUR_BRANCH --knowledge-path projects/YOUR_PROJECT
 ```
 
-Replace the placeholders with an existing repository, branch, and project directory matching the configured project ID. Only the coordinator's token may change the team binding. Service and worker Git permissions still apply. Live mode supports GitHub SSH/HTTPS; demo mode additionally permits local bare repositories for reproducible tests.
+The configuration command above applies to a local operator workspace without browser OAuth. Teams create or connect managed projects through **Projects**; managed bindings are fixed. Repository permissions and branch policies still apply.
 
-For a credential-free cached literature demonstration, use `researchrelay serve --offline-demo --port 8001` and `researchrelay demo --offline`. Both select `.runtime/offline-demo/state.db` and `.runtime/offline-demo/project-record`; optional `--db` and `--repo` overrides must match between commands. Offline flags clear participant-token settings, use loopback only, and reject a database with a saved repository binding. They do not detach a shared project.
+For a local cached literature demonstration, use `researchrelay serve --offline-demo --port 8001` and `researchrelay demo --offline`. They use isolated local state, disable browser OAuth, require loopback, and reject a database with an existing shared binding.
 
-The service host authenticates Git through its configured SSH/credential helper. Each participant authenticates to this project with their own token. These are separate permissions: participant tokens authorize trusted project writers through the service principal; they are not GitHub OAuth or provider API credentials. For direct participant Git publication, each local worker uses the participant's own Git credentials. Repository rules remain in effect; a protected-branch rejection needs an approved PR/review path, not a forced update.
+Each team member signs in with GitHub and keeps their own agent/provider credentials. Workers and CLI commands reuse that participant’s GitHub CLI login. GitHub remains authoritative for repository permissions and branch policies.
 
 ## Retrieve and continue another participant's work
 
-1. Enter your project token using **Access**, or export `RESEARCHRELAY_TOKEN` in the worker terminal.
+1. Sign in through **Projects → Connect GitHub** and open the managed project.
 2. Open or refresh the project. The dashboard retrieves recent committed information and reports status, branch, commit, and last check. It polls local workflow state every four seconds and checks Git on the configured interval (default 15 seconds).
 3. **Retrieve updates** or `researchrelay project sync --server URL` forces retrieval. `researchrelay project context --server URL --output context.json` saves exact context for an agent.
 4. Read the literature index, relevant source notes, synthesis, and open tasks. Each knowledge row names its responsible participant and producing agent. Workers retrieve current context again before claiming an assigned task and consume pinned versions.
@@ -35,10 +35,10 @@ A knowledge artifact is not automatically a human-approved task. Scientific choi
 
 ## Use your editor agent
 
-With your participant token configured, select **My agent → VS Code / Copilot**, then run the worker in your own terminal:
+After `gh auth login --hostname github.com`, set `RESEARCHRELAY_SERVER` to the full managed project URL. Select **My agent → VS Code / Copilot**, then run the worker in your own terminal:
 
 ```bash
-researchrelay worker --server http://127.0.0.1:8000 --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
+researchrelay worker --server http://127.0.0.1:8000/projects/PROJECT_ID --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
 ```
 
 A coordinator must first approve a task assigned to Alice. The worker retrieves current context, claims the ready task, and prints an isolated editor workspace and instructions. Start your own extension's Agent chat there; it writes `report.json` and `REPORT_READY` under `.researchrelay-exchange/`. The worker validates and submits the result for review. This uses the participant's existing extension session rather than invoking a remote chat API. See [editor handoff](vscode.md) for exact report/restart requirements. On PowerShell, use your own Windows clone path in `--repo`.
@@ -48,8 +48,8 @@ A coordinator must first approve a task assigned to Alice. The worker retrieves 
 Use a new path for an independent finding or a review of someone else's result. Preserve source citations and relationships. New browser drafts default to `manual` attribution; enter an AI agent name only if it actually produced that contribution.
 
 ```bash
-researchrelay project context --server http://127.0.0.1:8000 --output context.json
-researchrelay project publish --server http://127.0.0.1:8000 --context context.json --file finding.md --path projects/agentic-collaboration/alice-finding.md --agent alice-agent --request-id alice-finding-001 --message 'Record verified coordination evidence'
+researchrelay project context --server http://127.0.0.1:8000/projects/PROJECT_ID --output context.json
+researchrelay project publish --server http://127.0.0.1:8000/projects/PROJECT_ID --context context.json --file finding.md --path projects/agentic-collaboration/alice-finding.md --agent alice-agent --request-id alice-finding-001 --message 'Record verified coordination evidence'
 ```
 
 Bob retrieves a **new** context, reads that committed finding, and publishes `projects/agentic-collaboration/bob-review.md` with a relationship to Alice's artifact and his own attribution. API/CLI credentials stay in each participant's environment. Real provider model calls require supported API/CLI access; a chat subscription is not assumed to include it.

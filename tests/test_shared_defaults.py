@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from researchrelay.api import create_app
+from github_fixture import authenticated_app
 from researchrelay.config import Settings
 from researchrelay.engine import Engine
 from researchrelay.knowledge import render_knowledge
@@ -13,7 +14,6 @@ from researchrelay.sync import ProjectSync, SyncError
 CANONICAL_URL = "git@github.com:midatm1234/ResearchRelay.git"
 DEFAULT_BRANCH = "SRTD_DT_test"
 PROJECT = "agentic-collaboration"
-TOKENS = {"coordinator-test-token": "human", "alice-test-token": "alice"}
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +69,7 @@ def note(participant="alice", identifier="initial-finding"):
 
 
 def headers(participant="human"):
-    return {"Authorization": "Bearer " + ("coordinator-test-token" if participant == "human" else "alice-test-token")}
+    return {"Authorization": "Bearer " + ("github-human-test-token" if participant == "human" else "github-alice-test-token")}
 
 
 def test_fresh_install_defaults_to_the_shared_researchrelay_project(tmp_path, monkeypatch):
@@ -147,10 +147,10 @@ def test_coordinator_rebinds_one_project_without_leaking_old_cached_documents(tm
     prefix = "team/knowledge"
     first_remote, first_commit = seed_remote(tmp_path, "first-team", "team-main", prefix, include_note=True)
     second_remote, second_commit = seed_remote(tmp_path, "second-team", "other-main", prefix)
-    settings = settings_at(tmp_path, mode="demo", github_url=None, tokens=TOKENS)
+    settings = settings_at(tmp_path, mode="demo", github_url=None)
     engine = Engine(settings.db_path, PROJECT)
     engine.create_task(id="keep-task", owner="alice", acceptance_criteria=["Preserve approved scope"])
-    app = create_app(settings, engine)
+    app = authenticated_app(settings, engine)
     with TestClient(app) as client:
         first_binding = {"url": str(first_remote), "branch": "team-main", "knowledge_path": prefix}
         denied = client.put("/api/project/repository", headers=headers("alice"), json=first_binding)
@@ -181,8 +181,8 @@ def test_committed_custom_repository_with_no_bundle_accepts_first_publication(tm
     prefix = "science/knowledge"
     remote, original_commit = seed_remote(tmp_path, "empty-knowledge", "research/initial", prefix)
     settings = settings_at(tmp_path, mode="demo", github_url=str(remote), github_branch="research/initial",
-                           knowledge_path=prefix, tokens=TOKENS)
-    app = create_app(settings, Engine(settings.db_path, PROJECT))
+                           knowledge_path=prefix)
+    app = authenticated_app(settings, Engine(settings.db_path, PROJECT))
     with TestClient(app) as client:
         first = client.get("/api/project/context", headers=headers("alice"))
         assert first.status_code == 200, first.text
@@ -206,8 +206,8 @@ def test_committed_custom_repository_with_no_bundle_accepts_first_publication(tm
 def test_unborn_custom_repository_has_actionable_initial_commit_error(tmp_path):
     remote = tmp_path / "unborn.git"
     subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
-    settings = settings_at(tmp_path, mode="demo", github_url=str(remote), github_branch="team-main", tokens=TOKENS)
-    app = create_app(settings, Engine(settings.db_path, PROJECT))
+    settings = settings_at(tmp_path, mode="demo", github_url=str(remote), github_branch="team-main")
+    app = authenticated_app(settings, Engine(settings.db_path, PROJECT))
     with TestClient(app) as client:
         response = client.get("/api/project/context", headers=headers())
         assert response.status_code in {409, 422, 503}, response.text
@@ -225,8 +225,8 @@ def test_identical_commit_cannot_redirect_a_publication_to_another_binding(tmp_p
     branch = "team-main"
     remote, _ = seed_remote(tmp_path, "original-team", branch, prefix)
     settings = settings_at(tmp_path, mode="demo", github_url=str(remote), github_branch=branch,
-                           knowledge_path=prefix, tokens=TOKENS)
-    app = create_app(settings, Engine(settings.db_path, PROJECT))
+                           knowledge_path=prefix)
+    app = authenticated_app(settings, Engine(settings.db_path, PROJECT))
 
     def publication(context, name, key):
         return {"base_commit": context["sync"]["latest_commit"], "expected_repository": context["repository"],

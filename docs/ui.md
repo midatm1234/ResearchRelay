@@ -2,7 +2,7 @@
 
 The dashboard is served by FastAPI at `/`. Its plain HTML/CSS/JavaScript interface needs no build tool. External Google Fonts are optional; operating-system fallbacks keep the interface usable offline.
 
-The dashboard polls persistent workflow state every four seconds. Closing a browser does not stop agents. The browser stores only the last acknowledged event sequence in local storage and an optional project token in session storage. Workflow state, measurements, and artifacts belong to the backend.
+The dashboard polls persistent workflow state every four seconds. Closing a browser does not stop agents. The browser stores only the last acknowledged event sequence in local storage while GitHub sign-in uses an HTTPOnly session cookie. Workflow state, measurements, and artifacts belong to the backend.
 
 Use **Meeting to tasks** to paste or upload text/Markdown notes, inspect explicitly recorded outcomes versus agent inferences, edit task IDs/owners/objectives/dependencies/outputs/acceptance criteria, exclude proposals, and approve the resulting scope. File contents are read locally and submitted as notes; uploads are limited to 200 KB in the interface.
 

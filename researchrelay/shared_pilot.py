@@ -7,7 +7,6 @@ as live inference; the executable report adapter is deliberately scripted.
 from __future__ import annotations
 
 import json
-import secrets
 from pathlib import Path
 import shutil
 import subprocess
@@ -82,15 +81,30 @@ def _git(path,*args):
 
 
 class _Session:
-    def __init__(self,client,participant,token):
+    """Simulated participant identities confined to this in-process pilot."""
+    def __init__(self, client, participant):
         self.client = client
-        self.headers = {"Authorization":f"Bearer {token}"}
-    def get(self,path,**kwargs):
-        return self.client.get(path,headers=self.headers,**kwargs)
-    def post(self,path,**kwargs):
-        return self.client.post(path,headers=self.headers,**kwargs)
-    def put(self,path,**kwargs):
-        return self.client.put(path,headers=self.headers,**kwargs)
+        self.participant = participant
+        self.headers = {}
+
+    def _request(self, method, path, **kwargs):
+        from .github_auth import GitHubIdentity
+        from .managed_context import managed_identity
+        identity = GitHubIdentity({"human":1,"alice":2,"bob":3}[self.participant], self.participant, "")
+        context = managed_identity.set(dict(identity=identity, role="admin" if self.participant=="human" else "write", demo=True))
+        try:
+            return self.client.request(method, path, **kwargs)
+        finally:
+            managed_identity.reset(context)
+
+    def get(self, path, **kwargs):
+        return self._request("GET", path, **kwargs)
+
+    def post(self, path, **kwargs):
+        return self._request("POST", path, **kwargs)
+
+    def put(self, path, **kwargs):
+        return self._request("PUT", path, **kwargs)
 
 
 def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False):
@@ -118,10 +132,8 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
         remote = str(bare)
     else:
         remote = str(remote)
-    credentials = {name:secrets.token_urlsafe(32) for name in ("human","alice","bob")}
     settings = Settings(db_path=root/"state.db",repo_path=root/"coordinator"/"records",project_id=PROJECT,
-        mode="live" if live else "demo",github_url=remote,github_branch=branch,knowledge_path=PREFIX,
-        tokens={token:name for name,token in credentials.items()})
+        mode="live" if live else "demo",github_url=remote,github_branch=branch,knowledge_path=PREFIX)
     engine = Engine(settings.db_path,PROJECT)
     producer = root/"participant-agent.py"
     producer.write_text(PRODUCER,encoding="utf-8")
@@ -130,7 +142,7 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
     first_task,second_task = f"lit-finding-{run_id}",f"lit-review-{run_id}"
     app = create_app(settings,engine)
     with TestClient(app,base_url="http://testserver/api/") as client:
-        sessions = {name:_Session(client,name,credentials[name]) for name in credentials}
+        sessions = {name:_Session(client,name) for name in ("human","alice","bob")}
         human,alice,bob = (sessions[name] for name in ("human","alice","bob"))
         initial_response = alice.get("project/context")
         initial_response.raise_for_status()
@@ -152,7 +164,7 @@ def run_shared_pilot(remote=None,branch="SRTD_DT_test",workspace=None,live=False
                 "command":[sys.executable,str(producer),alice_path]})
             response.raise_for_status()
         def execute(name):
-            worker = Worker("http://testserver",name,root/f"{name}-clone",token=credentials[name])
+            worker = Worker("http://testserver",name,root/f"{name}-clone")
             worker.client.close()
             worker.client = sessions[name]
             outcome = worker.run_once()

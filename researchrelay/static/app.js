@@ -59,15 +59,13 @@ function notice(message, error = false) {
 }
 async function api(path, method = 'GET', data) {
   const headers = { Accept: 'application/json' };
-  const token = managedProject ? null : sessionStorage.getItem('researchrelay:token');
-  if (token) headers.Authorization = `Bearer ${token}`;
   if (data !== undefined) headers['Content-Type'] = 'application/json';
   const response = await fetch(`${apiBase}${path}`, { method, credentials: 'same-origin', headers, body: data === undefined ? undefined : JSON.stringify(data) });
   if (!response.ok) {
     let detail, payload;
     try { payload = await response.json(); detail = asText(payload.detail || payload.message || payload); }
     catch { detail = response.statusText; }
-    const error = new Error(response.status === 401 ? (managedProject ? 'Sign in with GitHub from Projects to access this project.' : 'A project access token is required. Select Access in the top bar.') : detail || `Request failed (${response.status})`);
+    const error = new Error(response.status === 401 ? 'Sign in with GitHub from Projects to access this project.' : detail || `Request failed (${response.status})`);
     error.status = response.status; error.payload = payload;
     throw error;
   }
@@ -426,16 +424,7 @@ $('assessment-form').addEventListener('submit', event => {
     $('coordination-time').value = ''; $('assessment-note').value = ''; toast('Pilot assessment recorded.'); await refresh(true);
   });
 });
-const accessButton = node('button', { class: 'text-button', text: managedProject ? 'Project account' : 'Access', title: managedProject ? 'View connected project access' : 'Configure a project-scoped access token for this browser session', onclick: () => {
-  if (managedProject) {
-    openDetail('Project account', 'YOUR CONNECTED GITHUB IDENTITY', [node('p', { class: 'section-intro', text: 'This project uses your server-managed GitHub sign-in and repository permissions. Open Projects to connect or change accounts. Legacy default-workspace tokens are not sent to this project.' }), node('a', { class: 'button primary', href: '/projects', text: 'Open Projects' })]);
-    return;
-  }
-  const input = node('input', { type: 'password', autocomplete: 'off', placeholder: 'Project access token', value: sessionStorage.getItem('researchrelay:token') || '', 'aria-label': 'Project access token' });
-  const button = node('button', { type: 'submit', class: 'button primary', text: 'Use for this browser session' });
-  openDetail('Project access', 'OPTIONAL AUTHENTICATED SERVICE', [node('p', { class: 'section-intro', text: 'The local literature demonstration does not need a token. For a configured service, use your project-scoped token. It is held only in this browser session and sent to this service.' }), node('form', { onsubmit: event => { event.preventDefault(); const token = input.value.trim(); if (token) sessionStorage.setItem('researchrelay:token', token); else sessionStorage.removeItem('researchrelay:token'); $('detail-dialog').close(); refresh(); } }, [input, node('div', { class: 'detail-buttons' }, [button])])]);
-} });
-document.querySelector('.topbar-right').append(accessButton);
+document.querySelector('.topbar-right').append(node('a', { class: 'text-button', href: '/projects', text: 'GitHub account' }));
 async function startWorkspace() {
   if (managedProject) {
     document.querySelector('.brand').href = '/projects';
@@ -697,7 +686,7 @@ async function showAgentProfile() {
       const saved = await api('/participants/me/agent','PUT',payload);
       state.profile = saved.profile || saved; $('detail-dialog').close(); toast('Your agent profile is saved. Start your participant worker to execute tasks.');
     });
-  } }, [node('p', { class: 'section-intro', text: `Profile for ${result.participant || state.project?.participant || 'human'}. Credentials stay in your own worker environment. A consumer chat subscription does not imply API access; configure API access and billing separately where required.` }), field('Preferred agent connection',provider), editorHelp, field('Model ID (required for API providers; optional editor label)',model), field('API endpoint (optional)',baseURL), field('API key environment variable name — never enter the key itself',keyName), field('Command adapter argv (executed only by your local worker)',command), field('Claude CLI allowed tools',tools), node('p', { class: 'section-intro', text: managedProject ? `This service stores connection metadata only. In your own terminal, set RESEARCHRELAY_TOKEN to your repository-permitted GitHub PAT, then run researchrelay worker --server ${location.origin}/projects/${managedProject} --participant ${result.participant || 'YOUR_GITHUB_LOGIN'} --repo YOUR_CLONE. Your provider credentials and clone Git authentication stay in your own environment.` : 'This service stores connection metadata only. It does not execute the command or read your provider key. Run researchrelay worker --participant YOUR_NAME --repo YOUR_CLONE to retrieve current context, claim work, and submit a validated result.' }), button]);
+  } }, [node('p', { class: 'section-intro', text: `Profile for ${result.participant || state.project?.participant || 'human'}. Credentials stay in your own worker environment. A consumer chat subscription does not imply API access; configure API access and billing separately where required.` }), field('Preferred agent connection',provider), editorHelp, field('Model ID (required for API providers; optional editor label)',model), field('API endpoint (optional)',baseURL), field('API key environment variable name — never enter the key itself',keyName), field('Command adapter argv (executed only by your local worker)',command), field('Claude CLI allowed tools',tools), node('p', { class: 'section-intro', text: managedProject ? `This service stores connection metadata only. Sign in with gh auth login in your own terminal, then run researchrelay worker --server ${location.origin}/projects/${managedProject} --participant ${result.participant || 'YOUR_GITHUB_LOGIN'} --repo YOUR_CLONE. Your provider credentials and clone Git authentication stay in your own environment.` : 'This service stores connection metadata only. It does not execute the command or read your provider key. Run researchrelay worker --participant YOUR_NAME --repo YOUR_CLONE to retrieve current context, claim work, and submit a validated result.' }), button]);
   openDetail('My agent connection', 'PARTICIPANT-OWNED TOOLS AND CREDENTIALS', [form]);
 }
 function configureSharedRepository() {
@@ -709,7 +698,7 @@ function configureSharedRepository() {
   const form = node('form', { class: 'repository-config-form', onsubmit: event => {
     event.preventDefault();
     action(button, async () => { await api('/project/repository','PUT',{url:url.value.trim(),branch:branch.value.trim(),knowledge_path:path.value.trim()}); $('detail-dialog').close(); state.contextCommit = null; await loadSharedContext({fresh: true}); await refresh(true); toast('Shared repository configured and current information retrieved.'); });
-  } }, [node('p', { class: 'section-intro', text: `This service coordinates project ${state.project?.project_id || ''}. Its Git credentials must have permission for the repository. Use a shared working branch that follows your repository’s review policy. This knowledge source applies to every participant in the current project. Use a separate project for another person or group; only its coordinator should change this binding. Configure project identity and participant tokens on the service host.` }), field('Repository URL',url),field('Branch',branch),field('Knowledge directory inside the repository',path),button]);
+  } }, [node('p', { class: 'section-intro', text: `This service coordinates project ${state.project?.project_id || ''}. Its Git credentials must have permission for the repository. Use a shared working branch that follows your repository’s review policy. This knowledge source applies to every participant in the current project. Use a separate project for another person or group; only its coordinator should change this binding. Use Projects to manage your GitHub account and repository access.` }), field('Repository URL',url),field('Branch',branch),field('Knowledge directory inside the repository',path),button]);
   openDetail('Connect a GitHub project', 'COORDINATOR CONFIGURATION', [form]);
 }
 $('sync-project-button').addEventListener('click', event => action(event.currentTarget,retrieveSharedUpdates));

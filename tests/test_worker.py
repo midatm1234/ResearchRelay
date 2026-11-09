@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from researchrelay.api import create_app
+from github_fixture import authenticated_app
 from researchrelay.artifacts import render_markdown
 from researchrelay.config import Settings
 from researchrelay.engine import Engine
@@ -53,7 +54,7 @@ def test_provider_independent_worker_retrieves_inputs_and_submits(tmp_path, monk
 
 def test_claude_child_environment_excludes_coordinator_credentials(tmp_path, monkeypatch):
     monkeypatch.setenv("RESEARCHRELAY_TOKEN", "private-worker-token")
-    monkeypatch.setenv("RESEARCHRELAY_TOKENS", '{"private-admin-token":"human"}')
+    monkeypatch.setenv("RESEARCHRELAY_GITHUB_CLIENT_SECRET", "private-oauth-secret")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "participant-provider-key")
     captured = {}
     class Process:
@@ -149,8 +150,7 @@ def test_gpt_worker_complete_context_result_review_and_shared_publication(tmp_pa
     engine=Engine(tmp_path/'state.db',project_id)
     engine.create_task(id='analysis',title='Review source collaboration mechanism',owner='alice',
         objective='Synthesize only the supplied source evidence.',acceptance_criteria=['Cite supplied evidence and limitations'])
-    settings=Settings(db_path=engine.db_path,repo_path=tmp_path/'record',project_id=project_id,
-                      tokens={'human-secret':'human','alice-secret':'alice','bob-secret':'bob'})
+    settings=Settings(db_path=engine.db_path,repo_path=tmp_path/'record',project_id=project_id)
     monkeypatch.setenv('OPENAI_API_KEY','local-provider-secret')
     report={'body':'# Finding\n\nThis synthetic example shows an evidence-linked handoff.',
             'findings':['An explicit handoff links a task to a source.'],'citations':['https://example.org/source'],
@@ -166,14 +166,14 @@ def test_gpt_worker_complete_context_result_review_and_shared_publication(tmp_pa
     def generate(profile,context,timeout,lost,workspace):
         return APIReportProvider(profile,timeout,httpx.MockTransport(model)).generate(context,lost)
     monkeypatch.setattr('researchrelay.worker.generate_report',generate)
-    human={'Authorization':'Bearer human-secret'};bob={'Authorization':'Bearer bob-secret'}
-    with TestClient(create_app(settings,engine),base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-secret'}) as client:
+    human={'Authorization':'Bearer github-human-test-token'};bob={'Authorization':'Bearer github-bob-test-token'}
+    with TestClient(authenticated_app(settings,engine),base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         configured=client.put('project/repository',headers=human,json={'url':str(remote),'branch':'SRTD_DT_test',
                               'knowledge_path':'projects/agentic-collaboration'})
         assert configured.status_code==200,configured.text
         configured=client.put('participants/me/agent',json={'provider':'openai-responses','model':'configured-model'})
         assert configured.status_code==200,configured.text
-        worker=Worker('http://testserver','alice',tmp_path/'alice clone',token='alice-secret')
+        worker=Worker('http://testserver','alice',tmp_path/'alice clone',token='github-alice-test-token')
         worker.client.close();worker.client=client
         outcome=worker.run_once()
         assert outcome['status']=='submitted'
@@ -228,10 +228,10 @@ def test_provider_authentication_failure_becomes_a_safe_task_blocker(tmp_path,mo
     engine=Engine(tmp_path/'state.db')
     engine.create_task(id='analysis',title='Review evidence',owner='alice',objective='Compare evidence',
                        acceptance_criteria=['Provide source evidence'])
-    settings=Settings(db_path=engine.db_path,repo_path=tmp_path/'record',tokens={'alice-secret':'alice'})
-    with TestClient(create_app(settings,engine),base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-secret'}) as client:
+    settings=Settings(db_path=engine.db_path,repo_path=tmp_path/'record')
+    with TestClient(authenticated_app(settings,engine),base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         assert client.put('participants/me/agent',json={'provider':'openai-responses','model':'configured-model'}).status_code==200
-        adapter=Worker('http://testserver','alice',tmp_path/'worker clone',token='alice-secret')
+        adapter=Worker('http://testserver','alice',tmp_path/'worker clone',token='github-alice-test-token')
         adapter.client.close();adapter.client=client
         def missing(*args,**kwargs):
             raise ProviderError('Provider credential is missing from this participant worker environment','authentication')

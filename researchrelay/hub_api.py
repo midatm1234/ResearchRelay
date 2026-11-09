@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from urllib.parse import urlsplit
 import httpx
 from fastapi import Request, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, ConfigDict
 
 from .project_hub import ProjectHub, HubError
 from .managed_context import managed_identity
+from . import ui
 
 SESSION = "researchrelay_github"
 PENDING = "researchrelay_oauth_pending"
@@ -225,16 +225,14 @@ def install_hub(app,settings,hub=None):
         finally:
             managed_identity.reset(token)
 
-    static = Path(__file__).parent/"static"
-
     @app.get("/projects",include_in_schema=False)
     def projects_page():
-        return FileResponse(static/"projects.html")
+        return ui.page_response('projects.html')
 
     @app.get("/projects/{project_id}",include_in_schema=False)
     def project_page(project_id: str,request: Request):
         # HTML contains no private project data; all API access is authenticated.
-        return FileResponse(static/"index.html")
+        return ui.page_response('index.html')
 
     @app.api_route("/projects/{project_id}/{route:path}",methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS","HEAD"],include_in_schema=False)
     async def project_api(project_id: str,route: str,request: Request):

@@ -12,14 +12,15 @@ def client_factory(monkeypatch, handler):
     monkeypatch.setattr('researchrelay.cli.httpx.Client',lambda **kwargs: original(transport=httpx.MockTransport(handler),**kwargs))
 
 
-def test_cli_profile_stores_key_name_and_uses_local_project_token(monkeypatch,capsys):
-    monkeypatch.setenv('RESEARCHRELAY_TOKEN','local-project-token')
+def test_cli_profile_stores_key_name_and_uses_github_authorization(monkeypatch,capsys):
+    monkeypatch.setenv('GH_TOKEN','own-github-authorization')
+    monkeypatch.setenv('RESEARCHRELAY_SERVER','http://127.0.0.1:8000/projects/test-project')
     def server(request):
-        assert request.url.path=='/api/participants/me/agent'
-        assert request.headers['Authorization']=='Bearer local-project-token'
+        assert request.url.path=='/projects/test-project/api/participants/me/agent'
+        assert request.headers['Authorization']=='Bearer own-github-authorization'
         profile=json.loads(request.content)
         assert profile['api_key_env']=='OPENAI_API_KEY'
-        assert 'local-project-token' not in request.content.decode()
+        assert 'own-github-authorization' not in request.content.decode()
         return httpx.Response(200,json={'participant':'alice','profile':profile})
     client_factory(monkeypatch,server)
     main(['agent','configure','--provider','openai-responses','--model','chosen-model'])

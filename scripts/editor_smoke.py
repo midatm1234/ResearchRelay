@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import secrets
 import shutil
 import socket
 import subprocess
@@ -19,6 +18,7 @@ import time
 import httpx
 
 from researchrelay.repository import _git
+from researchrelay.project_templates import build_project_files
 
 PROJECT = "agentic-collaboration"
 PREFIX = f"projects/{PROJECT}"
@@ -65,20 +65,29 @@ def main():
         seed.mkdir()
         _git(seed, "init", "-b", BRANCH)
         shutil.copytree(checkout/PREFIX, seed/PREFIX)
+        operation = dict(id='editor-smoke', project_id=PROJECT, actor='alice',
+            created_at='2026-11-04T12:00:00Z', steps={},
+            input=dict(name='Editor handoff smoke', repository='alice/editor-smoke',
+                       branch=BRANCH, knowledge_path=PREFIX))
+        for name, content in build_project_files(operation).items():
+            target = seed/name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding='utf-8')
         _git(seed, "add", "--", PREFIX)
         _git(seed, "-c", "user.name=Editor smoke", "-c", "user.email=smoke@localhost.invalid",
              "commit", "-m", "Seed verified literature context")
-        remote = root/"shared.git"
+        remote = root/".runtime/project-demo/hub/demo-remotes/alice/editor-smoke.git"
+        remote.parent.mkdir(parents=True)
         subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
+        (remote/'researchrelay-demo.json').write_text(json.dumps(dict(visibility='private', description='Isolated editor smoke')))
         _git(seed, "remote", "add", "origin", str(remote))
         _git(seed, "push", "origin", BRANCH)
-        tokens = {name: secrets.token_urlsafe(32) for name in ("human", "alice", "bob")}
         environment = {key: value for key, value in os.environ.items() if not key.upper().startswith("RESEARCHRELAY_")}
         environment.update(RESEARCHRELAY_MODE="demo", RESEARCHRELAY_PROJECT=PROJECT,
             RESEARCHRELAY_DB=str(root/"service/state.db"), RESEARCHRELAY_REPO=str(root/"service/record"),
             RESEARCHRELAY_GITHUB_URL=str(remote), RESEARCHRELAY_GITHUB_BRANCH=BRANCH,
             RESEARCHRELAY_KNOWLEDGE_PATH=PREFIX, RESEARCHRELAY_SYNC_INTERVAL="1",
-            RESEARCHRELAY_TOKENS=json.dumps({token: name for name, token in tokens.items()}))
+            RESEARCHRELAY_GITHUB_CLIENT_ID="", RESEARCHRELAY_GITHUB_CLIENT_SECRET="")
         with socket.socket() as reservation:
             reservation.bind(("127.0.0.1", 0))
             port = reservation.getsockname()[1]
@@ -87,12 +96,12 @@ def main():
         worker_log_path = root/"private-worker.log"
         with (root/"private-server.log").open("w", encoding="utf-8") as server_log, worker_log_path.open("w", encoding="utf-8") as worker_log:
             try:
-                server = subprocess.Popen([sys.executable, "-m", "researchrelay", "serve", "--port", str(port)],
+                server = subprocess.Popen([sys.executable, "-m", "researchrelay", "serve", "--project-demo", "--no-reload", "--port", str(port)],
                     cwd=root, env=environment, stdout=server_log, stderr=subprocess.STDOUT)
-                with httpx.Client(base_url=url+"/api/", timeout=90, trust_env=False) as client:
+                with httpx.Client(base_url=url+"/api/", headers={'Authorization':'Bearer local-demo-alice'}, timeout=90, trust_env=False) as client:
                     def request(actor, method, path, payload=None):
-                        response = client.request(method, path, json=payload,
-                            headers={"Authorization": "Bearer "+tokens[actor]})
+                        login = 'alice' if actor == 'human' else actor
+                        response = client.request(method, path, json=payload, headers={'Authorization':'Bearer local-demo-'+login})
                         response.raise_for_status()
                         return response.json()
                     def healthy():
@@ -103,11 +112,15 @@ def main():
                         except httpx.HTTPError:
                             return False
                     wait_for(healthy, "coordinator HTTP startup", 30)
+                    joined = client.post('hub/projects/join', json=dict(repository='alice/editor-smoke', branch=BRANCH, knowledge_path=PREFIX))
+                    assert joined.is_success, joined.text+'\n'+(root/'private-server.log').read_text(encoding='utf-8')
+                    url += joined.json()['project']['url']
+                    client.base_url = url+'/api/'
                     criteria = ["Cite the supplied source and separate the design inference from an evaluated finding."]
                     request("human", "POST", "tasks", {"id": "editor-source-review", "title": "Review AutoGen coordination",
                         "owner": "alice", "objective": "Review the pinned AutoGen source note and a bounded ResearchRelay implication.",
                         "acceptance_criteria": criteria, "expected_outputs": ["A cited literature finding with access limitations"]})
-                    worker_environment = dict(environment, RESEARCHRELAY_TOKEN=tokens["alice"])
+                    worker_environment = dict(environment, GH_TOKEN='local-demo-alice')
                     clone = root/"alice-clone"
                     worker = subprocess.Popen([sys.executable, "-m", "researchrelay", "worker", "--server", url,
                         "--participant", "alice", "--repo", str(clone), "--provider", "vscode", "--once", "--timeout", "60"],
@@ -148,7 +161,7 @@ def main():
                     for path in exchange.rglob("*"):
                         if path.is_file():
                             text = path.read_text(encoding="utf-8")
-                            assert all(secret not in text for secret in [*tokens.values(), private["claim_token"]])
+                            assert all(secret not in text for secret in [private["claim_token"]])
                     assert request("alice", "GET", "tasks/editor-source-review")["status"]=="awaiting_review"
                     request("bob", "POST", "tasks/editor-source-review/reviews", {"reviewer": "bob", "verdict": "approve",
                         "rationale": "Scripted peer-review check: citation and source-access limitation are retained; design inference is explicit.",
@@ -169,7 +182,7 @@ def main():
                     assert source_url in published["body"] and "Scripted editor handoff" in published["body"]
                     assert published["metadata"]["responsible_participant"]=="alice"
                     assert publication["commit"]==retrieved["sync"]["latest_commit"]
-                    stale = client.post("project/publish", headers={"Authorization": "Bearer "+tokens["alice"]}, json={
+                    stale = client.post("project/publish", json={
                         "base_commit": json.loads(saved_context.read_text(encoding="utf-8"))["sync"]["latest_commit"],
                         "expected_repository": json.loads(saved_context.read_text(encoding="utf-8"))["repository"],
                         "changes": [{"path": target, "content": published["content"], "expected_sha256": None}],

@@ -1,6 +1,6 @@
 # Shared-project implementation contract
 
-One FastAPI process/database coordinates one project. SQLite owns execution state; committed GitHub Markdown preserves project knowledge. Distinct project tokens identify trusted participants and their non-secret connection profiles. This is not per-user GitHub OAuth.
+One FastAPI process/database coordinates one project. SQLite owns execution state; committed GitHub Markdown preserves project knowledge. GitHub sign-in identifies participants; repository permissions govern access to each project and its agent connection profiles.
 
 ## Repository and context API
 

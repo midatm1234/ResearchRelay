@@ -39,7 +39,7 @@ class DemoAuth:
             if bearer in {"local-demo-alice","local-demo-bob","local-demo-reader"}:
                 login = bearer.removeprefix("local-demo-")
                 return DemoIdentity({"alice":1,"bob":2,"reader":3}[login],login)
-            raise GitHubError("Use a documented local-demo participant token; real GitHub credentials are not accepted in demonstration mode.",401)
+            raise GitHubError("Choose a local demonstration account; real GitHub credentials are not accepted in demonstration mode.",401)
         with self.hub.tx() as db:
             row = db.execute("SELECT login FROM demo_sessions WHERE hash=? AND expires>?",
                 (hashlib.sha256((session_cookie or "").encode()).hexdigest(),time.time())).fetchone()

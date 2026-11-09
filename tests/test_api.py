@@ -1,13 +1,14 @@
 from fastapi.testclient import TestClient
 
 from researchrelay.api import create_app
+from github_fixture import authenticated_app
 from researchrelay.config import Settings
 from researchrelay.engine import Engine
 
 
-def client_for(tmp_path,tokens=None):
-    settings = Settings(db_path=tmp_path/'state.db',repo_path=tmp_path/'record',tokens=tokens or {})
-    return TestClient(create_app(settings,Engine(settings.db_path)))
+def client_for(tmp_path,authenticated=False):
+    settings = Settings(db_path=tmp_path/'state.db',repo_path=tmp_path/'record')
+    return TestClient((authenticated_app if authenticated else create_app)(settings,Engine(settings.db_path)))
 
 
 def test_meeting_scope_and_task_protocol(tmp_path):
@@ -29,17 +30,16 @@ def test_meeting_scope_and_task_protocol(tmp_path):
         assert client.post('/api/tasks/source-review/heartbeat',json={'claim_token':claim['claim_token']}).status_code==409
 
 
-def test_tokens_scope_execution_and_human_decisions(tmp_path):
-    with client_for(tmp_path,{'secret-human':'human','secret-alice':'alice','secret-bob':'bob'}) as client:
+def test_github_accounts_scope_execution_and_decisions(tmp_path):
+    with client_for(tmp_path,authenticated=True) as client:
         assert client.get('/api/dashboard').status_code==401
-        human={'Authorization':'Bearer secret-human'}
-        alice={'Authorization':'Bearer secret-alice'}
-        bob={'Authorization':'Bearer secret-bob'}
+        human={'Authorization':'Bearer github-human-test-token'}
+        alice={'Authorization':'Bearer github-alice-test-token'}
+        bob={'Authorization':'Bearer github-bob-test-token'}
         assert client.post('/api/tasks',headers=human,json={'id':'source-review','title':'Review sources','owner':'alice','acceptance_criteria':['Evidence']}).status_code==201
         assert client.post('/api/tasks/source-review/claim',headers=bob,json={'worker_id':'bob'}).status_code==403
         assert client.post('/api/tasks/source-review/claim',headers=alice,json={'worker_id':'alice'}).status_code==200
-        assert client.post('/api/tasks/source-review/cancel',headers=alice).status_code==403
-        assert client.post('/api/tasks/source-review/cancel',headers=human).status_code==200
+        assert client.post('/api/tasks/source-review/cancel',headers=alice).status_code==200
 
 
 def test_upload_and_schema(tmp_path):
@@ -56,10 +56,10 @@ def test_upload_and_schema(tmp_path):
 
 
 def test_result_revision_and_independent_review_roundtrip(tmp_path):
-    with client_for(tmp_path,{'secret-human':'human','secret-alice':'alice','secret-bob':'bob'}) as client:
-        human = {'Authorization':'Bearer secret-human'}
-        alice = {'Authorization':'Bearer secret-alice'}
-        bob = {'Authorization':'Bearer secret-bob'}
+    with client_for(tmp_path,authenticated=True) as client:
+        human = {'Authorization':'Bearer github-human-test-token'}
+        alice = {'Authorization':'Bearer github-alice-test-token'}
+        bob = {'Authorization':'Bearer github-bob-test-token'}
         created = client.post('/api/tasks',headers=human,json={
             'id':'source-review','title':'Review source records','owner':'alice',
             'acceptance_criteria':['Report source count, publication status, and source IDs']})
@@ -108,7 +108,7 @@ def test_result_revision_and_independent_review_roundtrip(tmp_path):
 
 
 def test_startup_exposes_interrupted_background_job(tmp_path):
-    settings = Settings(db_path=tmp_path/'state.db',repo_path=tmp_path/'record',tokens={})
+    settings = Settings(db_path=tmp_path/'state.db',repo_path=tmp_path/'record')
     coordinator = Engine(settings.db_path)
     coordinator.start_job()
     with TestClient(create_app(settings,coordinator)) as client:
@@ -119,10 +119,10 @@ def test_startup_exposes_interrupted_background_job(tmp_path):
 
 
 def test_authenticated_attribution_cannot_be_spoofed_by_coordinator_or_workers(tmp_path):
-    with client_for(tmp_path,{'human-key':'human','alice-key':'alice','bob-key':'bob'}) as client:
-        human = {'Authorization':'Bearer human-key'}
-        alice = {'Authorization':'Bearer alice-key'}
-        bob = {'Authorization':'Bearer bob-key'}
+    with client_for(tmp_path,authenticated=True) as client:
+        human = {'Authorization':'Bearer github-human-test-token'}
+        alice = {'Authorization':'Bearer github-alice-test-token'}
+        bob = {'Authorization':'Bearer github-bob-test-token'}
         meeting = client.post('/api/meetings',headers=human,json={
             'notes':'Task source-review | owner=alice | Review sources | criteria=Report source count',
             'participant':'pretend-participant'})
@@ -156,10 +156,10 @@ def test_authenticated_attribution_cannot_be_spoofed_by_coordinator_or_workers(t
 
 
 def test_generic_artifact_api_enforces_task_ownership_and_existing_responsibility(tmp_path):
-    with client_for(tmp_path,{'human-key':'human','alice-key':'alice','bob-key':'bob'}) as client:
-        human = {'Authorization':'Bearer human-key'}
-        alice = {'Authorization':'Bearer alice-key'}
-        bob = {'Authorization':'Bearer bob-key'}
+    with client_for(tmp_path,authenticated=True) as client:
+        human = {'Authorization':'Bearer github-human-test-token'}
+        alice = {'Authorization':'Bearer github-alice-test-token'}
+        bob = {'Authorization':'Bearer github-bob-test-token'}
         client.post('/api/tasks',headers=human,json={
             'id':'bob-source-review','title':'Bob source-review','owner':'bob','acceptance_criteria':['Evidence']})
         forged_result = {'metadata':{'id':'result-bob-source-review','project_id':'agentic-collaboration',
@@ -170,7 +170,7 @@ def test_generic_artifact_api_enforces_task_ownership_and_existing_responsibilit
         for kind in ('task','meeting'):
             assert client.post('/api/artifacts',headers=alice,json={'metadata':{
                 'id':'forged-scope','project_id':'agentic-collaboration','artifact_type':kind,
-                'responsible_participant':'alice'}}).status_code == 403
+                'responsible_participant':'bob'}}).status_code == 403
         own_decision = {'metadata':{'id':'bob-observation','project_id':'agentic-collaboration',
             'artifact_type':'decision','responsible_participant':'bob','question':'Investigate coverage?',
             'options':['Investigate','Defer'],'evidence':['Publication-status gaps'],'consequence':'Scopes analysis'}}

@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> None:
     literature.add_argument("--workspace",help="New empty workspace; defaults to .runtime/literature-pilot-<run>")
     literature.add_argument("--live",action="store_true",help="Explicitly publish to the GitHub SRTD_DT_test branch")
     worker = commands.add_parser("worker", help="Run a participant-owned worker against the HTTP API")
-    worker.add_argument("--server", default="http://127.0.0.1:8000")
+    worker.add_argument("--server", default=os.getenv("RESEARCHRELAY_SERVER", "http://127.0.0.1:8000"))
     worker.add_argument("--participant", required=True)
     worker.add_argument("--repo", required=True, help="Participant's local project clone or empty directory")
     worker.add_argument("--mode", choices=["claude", "manual"], help="Legacy explicit Claude/manual selection")
@@ -66,7 +66,7 @@ def main(argv: list[str] | None = None) -> None:
     project_commands = project.add_subparsers(dest='project_action',required=True)
     for action in ('configure','context','sync','publish'):
         action_parser = project_commands.add_parser(action)
-        action_parser.add_argument('--server',default='http://127.0.0.1:8000')
+        action_parser.add_argument('--server',default=os.getenv('RESEARCHRELAY_SERVER', 'http://127.0.0.1:8000'))
         if action=='configure':
             action_parser.add_argument('--url',required=True)
             action_parser.add_argument('--branch',required=True)
@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> None:
     agent_commands = agent.add_subparsers(dest='agent_action',required=True)
     for action in ('show','configure'):
         action_parser = agent_commands.add_parser(action)
-        action_parser.add_argument('--server',default='http://127.0.0.1:8000')
+        action_parser.add_argument('--server',default=os.getenv('RESEARCHRELAY_SERVER', 'http://127.0.0.1:8000'))
         if action=='configure':
             action_parser.add_argument('--provider',required=True,choices=['claude-cli','openai-responses','openai-compatible','command','manual','vscode'])
             action_parser.add_argument('--model')
@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> None:
             parser.error('--project-demo requires loopback and cannot be combined with --offline-demo')
         origin_host = f'[{args.host}]' if ':' in args.host else args.host
         os.environ.update(RESEARCHRELAY_PROJECT_DEMO='1',RESEARCHRELAY_MODE='demo',
-            RESEARCHRELAY_GITHUB_URL='',RESEARCHRELAY_TOKENS='{}',
+            RESEARCHRELAY_GITHUB_URL='',RESEARCHRELAY_GITHUB_CLIENT_ID='',RESEARCHRELAY_GITHUB_CLIENT_SECRET='',
             RESEARCHRELAY_DB='.runtime/project-demo/default/state.db',
             RESEARCHRELAY_REPO='.runtime/project-demo/default/record',
             RESEARCHRELAY_HUB_PATH='.runtime/project-demo/hub',
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.error('serve --db/--repo require --offline-demo; configure the normal project through its environment or project API')
     if offline:
         os.environ.update(RESEARCHRELAY_MODE='demo',RESEARCHRELAY_GITHUB_URL='',
-                          RESEARCHRELAY_PROJECT='agentic-collaboration',RESEARCHRELAY_TOKENS='{}',
+                          RESEARCHRELAY_PROJECT='agentic-collaboration',RESEARCHRELAY_GITHUB_CLIENT_ID='',RESEARCHRELAY_GITHUB_CLIENT_SECRET='',
                           RESEARCHRELAY_DB=args.db or '.runtime/offline-demo/state.db',
                           RESEARCHRELAY_REPO=args.repo or '.runtime/offline-demo/project-record')
     from .config import Settings
@@ -133,8 +133,8 @@ def main(argv: list[str] | None = None) -> None:
             from .sync import ProjectSync
             if ProjectSync(settings,Engine(settings.db_path,project_id=settings.project_id)).binding:
                 parser.error('Offline service requires an unbound database; this database has a saved shared repository. Choose a separate --db/--repo; its saved binding was preserved')
-        if args.host not in {"127.0.0.1", "localhost", "::1"} and not (settings.tokens or (settings.oauth_client_id and settings.oauth_client_secret and settings.public_url.startswith("https://"))):
-            parser.error("Configure project-scoped tokens or GitHub OAuth with an HTTPS PUBLIC_URL before binding to a non-loopback interface")
+        if args.host not in {"127.0.0.1", "localhost", "::1"} and not (settings.oauth_client_id and settings.oauth_client_secret and settings.public_url.startswith("https://")):
+            parser.error("Configure GitHub OAuth with an HTTPS PUBLIC_URL before binding to a non-loopback interface")
         import uvicorn
         reload = args.reload if args.reload is not None else args.host in {"127.0.0.1", "localhost", "::1"}
         uvicorn.run("researchrelay.api:app", host=args.host, port=args.port, reload=reload,
@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "worker":
         from .worker import Worker
-        adapter = Worker(args.server, args.participant, args.repo, token=os.getenv("RESEARCHRELAY_TOKEN"),
+        adapter = Worker(args.server, args.participant, args.repo,
                          mode=args.mode, timeout=args.timeout, allowed_tools=args.allowed_tools,
                          provider=args.provider,model=args.model,base_url=args.base_url,api_key_env=args.api_key_env,
                          command=_read_command(args.command_file),open_editor=args.open_editor)
@@ -189,7 +189,8 @@ def _read_command(path):
 
 def _shared_command(args):
     from .providers import validate_profile
-    headers = {'Authorization':'Bearer '+os.environ['RESEARCHRELAY_TOKEN']} if os.getenv('RESEARCHRELAY_TOKEN') else {}
+    from .client_auth import authorization_headers
+    headers = authorization_headers(args.server)
     with httpx.Client(base_url=args.server.rstrip('/')+'/api/',headers=headers,timeout=120,trust_env=False) as client:
         def request(method,route,payload=None):
             response = client.request(method,route,json=payload) if payload is not None else client.request(method,route)

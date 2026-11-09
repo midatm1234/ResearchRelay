@@ -53,7 +53,7 @@ The response should contain `"configured": true`. Before browser sign-in, `"iden
 
 Open [Projects](http://127.0.0.1:8000/projects), select **Connect GitHub**, and authorize ResearchRelay using the account that created or joined the project. After GitHub redirects back, the Projects page shows that account's registered projects, subject to its current repository permissions.
 
-GitHub CLI authentication and SSH access are separate from this browser session. Each collaborator signs in with their own GitHub account and joins the existing project folder after receiving repository access.
+Browser access uses GitHub sign-in. Workers and CLI commands reuse the participant’s own `gh auth login` authorization; set `RESEARCHRELAY_SERVER` to the managed project URL. SSH access for the worker’s clone is configured separately. Each collaborator signs in with their own GitHub account and joins the existing project folder after receiving repository access.
 
 ## Troubleshooting
 

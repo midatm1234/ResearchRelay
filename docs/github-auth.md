@@ -1,6 +1,6 @@
 # GitHub authentication and repository permissions
 
-The multi-project browser connects each person to GitHub through a server-side OAuth web flow. ResearchRelay stores an encrypted per-user GitHub authorization and sends the browser an opaque session identifier. It does not ask browser users to paste tokens, store OAuth tokens in localStorage, borrow a shared account, or treat an agent chat subscription as GitHub/API access. The original single-project token interface remains separate from managed project sessions.
+The multi-project browser connects each person to GitHub through a server-side OAuth web flow. ResearchRelay stores an encrypted per-user GitHub authorization and sends the browser an opaque session identifier. It does not ask browser users to paste tokens, store OAuth tokens in localStorage, borrow a shared account, or treat an agent chat subscription as GitHub/API access. Team access uses GitHub identities and repository permissions throughout.
 
 ## Configure browser sign-in
 
@@ -47,15 +47,15 @@ Repository initialization uses Git blobs, a tree based on the current existing t
 
 ## Agent workers and CLI access
 
-A browser session is not exported to an agent. A managed worker can authenticate with its participant's own permitted GitHub personal access token in `RESEARCHRELAY_TOKEN`, sent as an HTTP Authorization Bearer header. The server verifies the token's GitHub identity without persisting the PAT. Fine-grained PATs need access to the selected repository, metadata read permission, and the contents permissions needed by the requested work; repository creation/organization operations may need additional GitHub entitlements. Classic PATs need the appropriate repository scope. GitHub remains the authority and insufficient permissions are reported.
-
-Use the managed project URL as the worker server and the actual GitHub login as its participant identity:
+A browser session is not exported to an agent. Each participant signs in through GitHub CLI in their own worker environment:
 
 ```bash
-researchrelay worker --server http://127.0.0.1:8000/projects/PROJECT_ID --participant YOUR_GITHUB_LOGIN --repo /path/to/your/project-clone --provider vscode --once
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
+researchrelay worker --participant YOUR_GITHUB_LOGIN --repo /path/to/your/project-clone --provider vscode --once
 ```
 
-Set the PAT privately in the participant's terminal or credential tooling, never in that command, its Git remote URL, agent profile, prompt, or Markdown. On macOS/Linux set `RESEARCHRELAY_TOKEN` in the terminal; on PowerShell use `$env:RESEARCHRELAY_TOKEN`. For the worker's local clone/fetch, configure that participant's own Git credential manager or SSH authentication separately. The HTTP PAT is not automatically a Git credential. An existing SSH clone can be used; the worker verifies its origin matches the selected repository and fetches the exact project branch before making an isolated task worktree.
+Workers and CLI commands reuse that GitHub authorization. The server verifies its identity and repository permissions. Automation can use the standard `GH_TOKEN` or `GITHUB_TOKEN` environment variable for its own GitHub authorization. PowerShell uses `$env:RESEARCHRELAY_SERVER` for the project URL. Credentials remain private and stay outside command arguments and project records. Configure local clone Git authentication separately through the participant’s Git credential manager or SSH.
 
 An agent's Claude/GPT/editor sign-in is still independent of GitHub authorization. The service coordinates tasks; the participant's own agent executes them. See [agent connections](agents.md) and [VS Code handoff](vscode.md).
 

@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import logging
-import secrets
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -17,6 +15,7 @@ from .artifacts import render_markdown, get_schema
 from .config import Settings
 from .engine import Engine, WorkflowError
 from .sync import ProjectSync, SyncError
+from . import ui
 
 
 class Payload(BaseModel):
@@ -179,18 +178,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
         elif request.url.path.startswith('/api/hub'):
             pass  # Project hub routes enforce GitHub identities and permissions.
         elif request.url.path.startswith('/api') and request.url.path != '/api/health':
-            if settings.tokens:
-                bearer = request.headers.get('Authorization','')
-                token = bearer[7:] if bearer.startswith('Bearer ') else ''
-                participant = next((owner for secret,owner in settings.tokens.items()
-                                    if token and secrets.compare_digest(secret,token)),None)
-                if not participant:
-                    return JSONResponse({'detail':'Project bearer token required. Configure the session token in the dashboard.'},status_code=401)
-                request.state.participant = participant
-            elif settings.oauth_client_id and settings.oauth_client_secret:
-                return JSONResponse({'detail':'Use a GitHub-authenticated project from Projects. Legacy workspace API access requires an explicit project token.'},status_code=401)
+            if settings.oauth_client_id and settings.oauth_client_secret:
+                return JSONResponse({'detail':'Sign in with GitHub from Projects and open your project.'},status_code=401)
             elif request.client and request.client.host not in {'127.0.0.1','::1','localhost','testclient'}:
-                return JSONResponse({'detail':'Unauthenticated demonstration is loopback only. Configure project tokens for team access.'},status_code=403)
+                return JSONResponse({'detail':'This local workspace is loopback only. Use GitHub sign-in from Projects for team access.'},status_code=403)
         response = await call_next(request)
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'same-origin'
@@ -221,13 +212,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
     async def repository_error(request,error):
         return JSONResponse({'detail':str(error),'next_action':'Reconcile the retained Git branch or immutable artifact versions before retrying.'},status_code=409)
 
-    def human(request):
-        if not request.state.managed and settings.tokens and request.state.participant != 'human':
-            raise HTTPException(403,'Human coordinator token required to change approved scope or resolve scientific decisions')
-
     def owner(request,task_id):
         task = coordinator.get_task(task_id)
-        if (settings.tokens or request.state.managed) and request.state.participant not in ({task['owner']} if request.state.managed else {'human',task['owner']}):
+        if request.state.managed and request.state.participant != task['owner']:
             raise HTTPException(403,'This task belongs to a different participant')
         return task
 
@@ -240,7 +227,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.get('/api/dashboard')
     def dashboard(request: Request,participant: str='human',since: int=0):
-        identity = request.state.participant if settings.tokens or request.state.managed else participant
+        identity = request.state.participant if request.state.managed else participant
         synchronizer.refresh()
         return {**coordinator.dashboard(identity,since),'mode':settings.mode,'project':synchronizer.public(identity)}
 
@@ -251,7 +238,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.put('/api/project/repository')
     def configure_shared_project(data: SharedRepository,request: Request):
-        human(request)
+        if request.state.managed and request.state.role != 'admin':
+            raise HTTPException(403,'GitHub repository administrator permission is required to change the shared source')
         synchronizer.configure(**data.model_dump())
         return synchronizer.public(request.state.participant)
 
@@ -287,7 +275,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/tasks',status_code=201)
     def new_task(data: TaskProposal,request: Request):
-        human(request)
         return coordinator.create_task(**data.model_dump(exclude_none=True))
 
     @app.post('/api/tasks/{task_id}/claim')
@@ -330,17 +317,15 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/tasks/{task_id}/cancel')
     def cancel(task_id: str,request: Request):
-        human(request)
         return public_task(coordinator.cancel_task(task_id))
 
     @app.post('/api/tasks/{task_id}/retry')
     def retry(task_id: str,request: Request,data: Retry | None=None):
-        human(request)
         return public_task(coordinator.retry_task(task_id,**(data.model_dump() if data else {})))
 
     @app.post('/api/tasks/{task_id}/reviews')
     def review(task_id: str,data: Review,request: Request):
-        if (settings.tokens or request.state.managed) and request.state.participant != data.reviewer:
+        if (request.state.managed) and request.state.participant != data.reviewer:
             raise HTTPException(403,'Reviewer must match authenticated participant')
         return coordinator.review_task(task_id,**data.model_dump())
 
@@ -366,14 +351,12 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/artifacts',status_code=201)
     def put_artifact(data: Artifact,request: Request):
-        if settings.tokens or request.state.managed:
+        if request.state.managed:
             identity = request.state.participant
             metadata = data.metadata
             if identity != 'human':
                 if identity != metadata.get('responsible_participant'):
                     raise HTTPException(403,'Artifact responsibility must match participant')
-                if not request.state.managed and metadata.get('artifact_type') in {'task','meeting'}:
-                    raise HTTPException(403,'Human coordinator token required to publish scope records')
                 try:
                     previous = coordinator.get_artifact(metadata.get('id'))
                 except WorkflowError as error:
@@ -397,15 +380,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/meetings',status_code=201)
     def meeting(data: Meeting,request: Request):
-        human(request)
-        if settings.tokens or request.state.managed:
+        if request.state.managed:
             data.participant = request.state.participant
         return coordinator.create_meeting(**data.model_dump())
 
     @app.post('/api/meetings/upload',status_code=201)
     async def upload(request: Request,file: UploadFile=File(...),participant: str=Form('human')):
-        human(request)
-        if settings.tokens or request.state.managed:
+        if request.state.managed:
             participant = request.state.participant
         content = await file.read(200_001)
         if len(content)>200_000:
@@ -418,7 +399,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/meetings/{meeting_id}/approve')
     def approve(meeting_id: str,data: Scope,request: Request):
-        human(request)
         return coordinator.approve_meeting(meeting_id,[p.model_dump(exclude_none=True) for p in data.tasks])
 
     @app.post('/api/decisions')
@@ -429,14 +409,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/decisions/{decision_id}/resolve')
     def resolve(decision_id: str,data: Resolution,request: Request):
-        human(request)
-        if settings.tokens or request.state.managed:
+        if request.state.managed:
             data.participant = request.state.participant
         return coordinator.resolve_decision(decision_id,**data.model_dump())
 
     @app.post('/api/metrics',status_code=201)
     def metric(data: Metric,request: Request):
-        participant = request.state.participant if settings.tokens or request.state.managed else data.participant
+        participant = request.state.participant if request.state.managed else data.participant
         return coordinator.add_metric(participant,data.kind,data.value,data.note)
 
     def run_background_pilot():
@@ -450,7 +429,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/pilot/run',status_code=202)
     def pilot(request: Request):
-        human(request)
         if settings.mode != 'demo':
             raise HTTPException(409,'The cached-literature demonstration is only available in explicitly labeled demo mode')
         if synchronizer.binding:
@@ -466,13 +444,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
 
     @app.post('/api/repository/export')
     def export(request: Request):
-        human(request)
         from .repository import Repository
         return Repository(settings.repo_path).export_state(coordinator)
 
     @app.post('/api/repository/import')
     def import_records(request: Request):
-        human(request)
         from .repository import Repository
         return Repository(settings.repo_path).import_state(coordinator)
 
@@ -480,18 +456,19 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
         from .hub_api import install_hub
         install_hub(app,settings)
 
-    static = Path(__file__).parent/'static'
-    app.mount('/static',StaticFiles(directory=static,check_dir=False),name='static')
+    app.mount('/static',StaticFiles(directory=ui.STATIC_ROOT,check_dir=False),name='static')
 
     @app.get('/',include_in_schema=False)
     def index():
         if include_hub and (settings.project_demo or (settings.oauth_client_id and settings.oauth_client_secret)):
             return RedirectResponse('/projects',status_code=307)
-        return FileResponse(static/'index.html')
+        return ui.page_response('index.html')
 
     @app.get('/workspace',include_in_schema=False)
     def legacy_workspace():
-        return FileResponse(static/'index.html')
+        if include_hub and (settings.project_demo or (settings.oauth_client_id and settings.oauth_client_secret)):
+            return RedirectResponse(settings.public_url+'/projects',status_code=307)
+        return ui.page_response('index.html')
 
     return app
 

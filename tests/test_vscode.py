@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from researchrelay.api import create_app
+from github_fixture import authenticated_app
 from researchrelay.config import Settings
 from researchrelay.engine import Engine
 from researchrelay.providers import ProviderError, REPORT_SCHEMA, validate_profile
@@ -40,9 +41,8 @@ def make_worker(tmp_path, configured=False):
     engine.create_task(id='source-review',title='Review AutoGen source',owner='alice',
                        objective='Summarize the supplied AutoGen coordination mechanism and one limitation.',
                        acceptance_criteria=['Cite the supplied source and distinguish inference.'])
-    settings=Settings(db_path=engine.db_path,repo_path=tmp_path/'record',project_id=engine.project_id,
-                      tokens={'human-project-token':'human','alice-project-token':'alice','bob-project-token':'bob'})
-    app=create_app(settings,engine)
+    settings=Settings(db_path=engine.db_path,repo_path=tmp_path/'record',project_id=engine.project_id)
+    app=authenticated_app(settings,engine)
     worker=Worker('http://testserver','alice',tmp_path/'alice-clone',provider='vscode',timeout=15)
     remote=None
     if configured:
@@ -53,7 +53,7 @@ def make_worker(tmp_path, configured=False):
         _git(seed.path,'add','projects');seed._commit(seed.path,'Add supplied verified source note')
         remote=tmp_path/'remote.git';remote.mkdir();_git(remote,'init','--bare')
         _git(seed.path,'remote','add','origin',str(remote));_git(seed.path,'push','origin','HEAD:refs/heads/SRTD_DT_test')
-        with TestClient(app,headers={'Authorization':'Bearer human-project-token'}) as human:
+        with TestClient(app,headers={'Authorization':'Bearer github-human-test-token'}) as human:
             response=human.put('/api/project/repository',json={'url':str(remote),'branch':'SRTD_DT_test',
                                                   'knowledge_path':'projects/agentic-collaboration'})
             assert response.status_code==200,response.text
@@ -85,8 +85,8 @@ def test_vscode_profile_and_portable_handoff(tmp_path):
 
 def test_editor_handoff_shared_source_result_review_and_publication(tmp_path,monkeypatch):
     engine,app,worker,remote=make_worker(tmp_path,configured=True)
-    monkeypatch.setenv('RESEARCHRELAY_TOKEN','alice-project-token')
-    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-project-token'}) as client:
+    monkeypatch.setenv('RESEARCHRELAY_TOKEN','github-alice-test-token')
+    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         worker.client=client
         with ThreadPoolExecutor(max_workers=1) as pool:
             execution=pool.submit(worker.run_once)
@@ -110,8 +110,8 @@ def test_editor_handoff_shared_source_result_review_and_publication(tmp_path,mon
         for path in (workspace/'.researchrelay-exchange').rglob('*'):
             if path.is_file():
                 text=path.read_text(encoding='utf-8')
-                assert 'alice-project-token' not in text and private['claim_token'] not in text
-        with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer bob-project-token'}) as bob:
+                assert 'github-alice-test-token' not in text and private['claim_token'] not in text
+        with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer github-bob-test-token'}) as bob:
             review=bob.post('tasks/source-review/reviews',json={'reviewer':'bob','verdict':'approve',
                 'rationale':'The coordination finding and explicit design inference match the supplied source note; productivity remains unproven.',
                 'criteria':['Cite the supplied source and distinguish inference.'],'result_version':1})
@@ -132,7 +132,7 @@ def test_editor_handoff_resume_uses_same_claim_and_workspace(tmp_path,monkeypatc
     def interrupted(*args,**kwargs):
         raise KeyboardInterrupt()
     monkeypatch.setattr('researchrelay.vscode.wait_for_report',interrupted)
-    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-project-token'}) as client:
+    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         worker.client=client
         with pytest.raises(KeyboardInterrupt):
             worker.run_once()
@@ -152,7 +152,7 @@ def test_editor_handoff_rejects_expired_or_replaced_attempt(tmp_path,monkeypatch
     engine,app,worker,_=make_worker(tmp_path)
     def interrupted(*args,**kwargs): raise KeyboardInterrupt()
     monkeypatch.setattr('researchrelay.vscode.wait_for_report',interrupted)
-    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-project-token'}) as client:
+    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         worker.client=client
         with pytest.raises(KeyboardInterrupt): worker.run_once()
         state=next((worker.repository.path/'.git/researchrelay-worker').glob('*.handoff.json'))
@@ -204,7 +204,7 @@ def test_editor_resume_rejects_changed_input_version(tmp_path,monkeypatch):
     engine.cancel_task('source-review')
     def interrupted(*args,**kwargs): raise KeyboardInterrupt()
     monkeypatch.setattr('researchrelay.vscode.wait_for_report',interrupted)
-    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-project-token'}) as client:
+    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         worker.client=client
         with pytest.raises(KeyboardInterrupt): worker.run_once()
         state=next((worker.repository.path/'.git/researchrelay-worker').glob('*.handoff.json'))
@@ -249,7 +249,7 @@ def test_missing_editor_launcher_keeps_manual_handoff_available(tmp_path,monkeyp
     worker.open_editor=True
     def unavailable(*args): raise ProviderError('VS Code command is unavailable; open the printed workspace manually','configuration')
     monkeypatch.setattr('researchrelay.vscode.open_editor',unavailable)
-    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-project-token'}) as client:
+    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         worker.client=client
         with ThreadPoolExecutor(max_workers=1) as pool:
             future=pool.submit(worker.run_once)
@@ -309,13 +309,13 @@ def test_editor_resume_rejects_repository_branch_change_with_identical_documents
     engine,app,worker,remote=make_worker(tmp_path,configured=True)
     def interrupted(*args,**kwargs): raise KeyboardInterrupt()
     monkeypatch.setattr('researchrelay.vscode.wait_for_report',interrupted)
-    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer alice-project-token'}) as client:
+    with TestClient(app,base_url='http://testserver/api/',headers={'Authorization':'Bearer github-alice-test-token'}) as client:
         worker.client=client
         with pytest.raises(KeyboardInterrupt): worker.run_once()
         state=next((worker.repository.path/'.git/researchrelay-worker').glob('*.handoff.json'))
         before=json.loads(state.read_text())['context']['project']
         _git(remote,'update-ref','refs/heads/group-knowledge',before['sync']['latest_commit'])
-        with TestClient(app,headers={'Authorization':'Bearer human-project-token'}) as human:
+        with TestClient(app,headers={'Authorization':'Bearer github-human-test-token'}) as human:
             changed=human.put('/api/project/repository',json={'url':str(remote),'branch':'group-knowledge',
                              'knowledge_path':'projects/agentic-collaboration'})
             assert changed.status_code==200,changed.text
@@ -328,26 +328,27 @@ def test_editor_resume_rejects_repository_branch_change_with_identical_documents
 
 
 @pytest.mark.parametrize('custom_paths',[False,True])
-def test_offline_service_selects_separate_unbound_project_and_clears_live_tokens(tmp_path,monkeypatch,custom_paths):
+def test_offline_service_selects_separate_unbound_project_and_clears_live_oauth(tmp_path,monkeypatch,custom_paths):
     from researchrelay.cli import main as cli
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv('RESEARCHRELAY_MODE','live')
     monkeypatch.setenv('RESEARCHRELAY_GITHUB_URL','git@github.com:group/live.git')
     monkeypatch.setenv('RESEARCHRELAY_PROJECT','another-group')
-    monkeypatch.setenv('RESEARCHRELAY_TOKENS','{"private-team-token":"human"}')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_CLIENT_ID','test-oauth-client')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_CLIENT_SECRET','test-oauth-secret')
     monkeypatch.setenv('RESEARCHRELAY_DB',str(tmp_path/'live.db'))
     monkeypatch.setenv('RESEARCHRELAY_REPO',str(tmp_path/'live-record'))
     captured={}
     def start(*args,**kwargs):
         settings=Settings()
         captured.update(mode=settings.mode,url=settings.github_url,project=settings.project_id,
-                        tokens=settings.tokens,db=settings.db_path,repo=settings.repo_path,kwargs=kwargs)
+                        db=settings.db_path,repo=settings.repo_path,kwargs=kwargs)
     monkeypatch.setattr('uvicorn.run',start)
     arguments=['serve','--offline-demo']
     if custom_paths: arguments+=['--db',str(tmp_path/'custom/demo.db'),'--repo',str(tmp_path/'custom/record')]
     cli(arguments)
     assert captured['mode']=='demo' and captured['url'] is None
-    assert captured['project']=='agentic-collaboration' and captured['tokens']=={}
+    assert captured['project']=='agentic-collaboration'
     expected_db=tmp_path/'custom/demo.db' if custom_paths else Path('.runtime/offline-demo/state.db')
     expected_repo=tmp_path/'custom/record' if custom_paths else Path('.runtime/offline-demo/project-record')
     assert captured['db']==expected_db and captured['repo']==expected_repo
@@ -360,7 +361,8 @@ def test_offline_demo_flag_uses_same_dedicated_state_as_offline_service(tmp_path
     monkeypatch.setenv('RESEARCHRELAY_MODE','live')
     monkeypatch.setenv('RESEARCHRELAY_GITHUB_URL','git@github.com:group/live.git')
     monkeypatch.setenv('RESEARCHRELAY_PROJECT','another-group')
-    monkeypatch.setenv('RESEARCHRELAY_TOKENS','{"private-team-token":"human"}')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_CLIENT_ID','test-oauth-client')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_CLIENT_SECRET','test-oauth-secret')
     captured={}
     def demo(engine,repo):
         captured.update(project=engine.project_id,db=engine.db_path,repo=repo,settings=Settings())
@@ -370,7 +372,7 @@ def test_offline_demo_flag_uses_same_dedicated_state_as_offline_service(tmp_path
     assert captured['project']=='agentic-collaboration'
     assert captured['db']==Path('.runtime/offline-demo/state.db')
     assert captured['repo']==Path('.runtime/offline-demo/project-record').resolve()
-    assert captured['settings'].tokens=={} and captured['settings'].github_url is None
+    assert not captured['settings'].oauth_client_id and captured['settings'].github_url is None
 
 
 def test_offline_service_preserves_and_rejects_a_saved_shared_binding(tmp_path,monkeypatch,capsys):
@@ -395,9 +397,10 @@ def test_service_db_override_requires_explicit_offline_mode(tmp_path,capsys):
     assert not (tmp_path/'do-not-create.db').exists()
 
 
-def test_offline_service_refuses_non_loopback_even_with_inherited_tokens(tmp_path,monkeypatch,capsys):
+def test_offline_service_refuses_non_loopback_even_with_inherited_oauth(tmp_path,monkeypatch,capsys):
     from researchrelay.cli import main as cli
-    monkeypatch.setenv('RESEARCHRELAY_TOKENS','{"private-team-token":"human"}')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_CLIENT_ID','test-oauth-client')
+    monkeypatch.setenv('RESEARCHRELAY_GITHUB_CLIENT_SECRET','test-oauth-secret')
     with pytest.raises(SystemExit) as error:
         cli(['serve','--offline-demo','--db',str(tmp_path/'offline.db'),'--repo',str(tmp_path/'record'),'--host','0.0.0.0'])
     assert error.value.code==2 and 'before binding to a non-loopback' in capsys.readouterr().err

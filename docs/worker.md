@@ -6,15 +6,16 @@ The coordinator stores approved task scope, claims, pinned inputs, events, and r
 
 See [agent connections](agents.md) for Claude CLI, GPT/OpenAI Responses, compatible API endpoints, command adapters, and manual Markdown handoff. See [VS Code/Copilot handoff](vscode.md) for using a participant's signed-in editor extension without a separate provider API key.
 
-In macOS/Linux, with a project token and your own writable clone:
+In macOS/Linux, after signing in with your own GitHub account and selecting a managed project:
 
 ```bash
-export RESEARCHRELAY_TOKEN='your-alice-project-token'
-researchrelay agent configure --server http://127.0.0.1:8000 --provider vscode
-researchrelay worker --server http://127.0.0.1:8000 --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
+gh auth login --hostname github.com
+export RESEARCHRELAY_SERVER=http://127.0.0.1:8000/projects/PROJECT_ID
+researchrelay agent configure --server http://127.0.0.1:8000/projects/PROJECT_ID --provider vscode
+researchrelay worker --server http://127.0.0.1:8000/projects/PROJECT_ID --participant alice --repo "$HOME/Projects/alice-project-clone" --provider vscode --once --timeout 3600 --open-editor
 ```
 
-On PowerShell, set `$env:RESEARCHRELAY_TOKEN = 'your-alice-project-token'` and pass your Windows clone path. A coordinator must approve ready work assigned to that participant. The worker retrieves committed project knowledge before claiming a task, reads pinned input versions, and keeps its claim alive while the selected connection works.
+On PowerShell, run `gh auth login` and set `$env:RESEARCHRELAY_SERVER = 'http://127.0.0.1:8000/projects/PROJECT_ID'` and pass your Windows clone path. A coordinator must approve ready work assigned to that participant. The worker retrieves committed project knowledge before claiming a task, reads pinned input versions, and keeps its claim alive while the selected connection works.
 
 For `vscode`, the worker prints an isolated `.code-workspace`, instructions, and private restart state. Open the workspace, start your extension's Agent chat yourself, and have it write `.researchrelay-exchange/report.json`, then `.researchrelay-exchange/REPORT_READY`. The worker validates the structured report, records provenance, and submits it for independent review. Extension authentication stays in VS Code; ResearchRelay does not remotely invoke a consumer chat session.
 

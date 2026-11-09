@@ -27,6 +27,8 @@ Run commands from the checkout. The default workspace retains its existing token
 
 ### Create or join a project
 
+For local browser sign-in, follow the [GitHub sign-in setup guide](docs/github-sign-in-setup.md), including callback/redirect URL configuration and project visibility troubleshooting.
+
 Open **http://127.0.0.1:8000/projects**, or choose **Projects** / **New Project** in the dashboard. The hub uses each participant's own GitHub account; the original workspace remains available at `/workspace` as **Default workspace**. With OAuth configured or `--project-demo`, `/` opens the project hub.
 
 The service owner first registers a GitHub OAuth App with homepage `http://127.0.0.1:8000` and callback **`http://127.0.0.1:8000/api/hub/auth/callback`** for loopback development. Set the following in the server's private `.env`, replacing placeholders, then start the normal service:

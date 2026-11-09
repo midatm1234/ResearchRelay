@@ -72,6 +72,29 @@ def publish(shared,identity,data):
     return shared["client"].post("/api/project/publish",headers=headers(identity),json=data)
 
 
+@pytest.mark.parametrize("repo_path", [".runtime/literature/project-record", ".runtime/session with spaces/연구 records"])
+def test_relative_repository_paths_support_retrieval_and_publication(shared, tmp_path, monkeypatch, repo_path):
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(db_path=shared["engine"].db_path, repo_path=Path(repo_path), project_id=PROJECT,
+                        github_url=str(shared["remote"]), github_branch=BRANCH, knowledge_path=PREFIX,
+                        mode="demo", tokens={})
+    sync = ProjectSync(settings, shared["engine"])
+    first = sync.context("alice")
+    assert first["sync"]["status"] == "synced"
+    assert any(document["path"] == f"{PREFIX}/finding.md" for document in first["documents"])
+
+    path = f"{PREFIX}/relative-path-note.md"
+    content = note(identifier="relative-path-note")
+    result = sync.publish("alice", **payload(first, path, content, "relative-path-publication"))
+    assert result["status"] == "published"
+    assert git(shared["remote"], "rev-parse", f"refs/heads/{BRANCH}") == result["commit"]
+
+    restarted = ProjectSync(settings, shared["engine"])
+    retrieved = restarted.context("bob")
+    assert retrieved["sync"]["latest_commit"] == result["commit"]
+    assert next(document for document in retrieved["documents"] if document["path"] == path)["content"] == content
+
+
 def test_two_users_exchange_real_git_knowledge_and_review(shared):
     first = context(shared)
     alice = publish(shared,"alice",payload(first,f"{PREFIX}/alice-note.md",note(identifier="alice-note"),"alice-first"))

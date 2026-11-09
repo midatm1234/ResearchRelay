@@ -21,6 +21,8 @@ Open **http://127.0.0.1:8000/workspace** for the default dashboard. It retrieves
 git ls-remote git@github.com:midatm1234/ResearchRelay.git refs/heads/SRTD_DT_test
 ```
 
+Local services automatically reload when the application's Python files change, including after a Git pull. Refresh the browser to load the latest HTML, JavaScript, CSS, and project state. Runtime databases and Git caches are outside the watched directory. Use `researchrelay serve --no-reload` for a stable process; non-loopback services disable automatic reload by default.
+
 Run commands from the checkout. The default workspace retains its existing token/SSH integration: copy `.env.example` to `.env` and configure distinct project tokens before sharing that workspace. Use **Access** for your browser token and **My agent** for your connection. The coordinator may select a different repository/branch/directory for a personal or group project through **Configure repository** or the CLI below. A saved project binding takes precedence over startup defaults and is shared by its participants; this default workspace has one active knowledge binding. The authenticated **Projects** hub below manages additional projects, each with its own execution database and binding.
 
 ### Create or join a project

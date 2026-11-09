@@ -15,6 +15,8 @@ def main(argv: list[str] | None = None) -> None:
     serve = commands.add_parser("serve", help="Start the local coordinator and dashboard")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--reload", action=argparse.BooleanOptionalAction, default=None,
+                       help="Reload Python changes automatically (default on loopback; --no-reload disables)")
     serve.add_argument("--project-demo",action="store_true",help="Serve credential-free multi-project creation with simulated GitHub accounts and real local Git")
     serve.add_argument("--offline-demo",action="store_true",help="Serve an explicitly offline cached literature demo in isolated local state")
     serve.add_argument("--db",help="Offline-demo SQLite path; requires --offline-demo")
@@ -134,7 +136,9 @@ def main(argv: list[str] | None = None) -> None:
         if args.host not in {"127.0.0.1", "localhost", "::1"} and not (settings.tokens or (settings.oauth_client_id and settings.oauth_client_secret and settings.public_url.startswith("https://"))):
             parser.error("Configure project-scoped tokens or GitHub OAuth with an HTTPS PUBLIC_URL before binding to a non-loopback interface")
         import uvicorn
-        uvicorn.run("researchrelay.api:app", host=args.host, port=args.port)
+        reload = args.reload if args.reload is not None else args.host in {"127.0.0.1", "localhost", "::1"}
+        uvicorn.run("researchrelay.api:app", host=args.host, port=args.port, reload=reload,
+                    reload_dirs=[str(Path(__file__).resolve().parent)] if reload else None)
         return
     if args.command == "worker":
         from .worker import Worker

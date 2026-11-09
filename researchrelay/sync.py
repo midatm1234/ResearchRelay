@@ -40,7 +40,8 @@ class ProjectSync:
         self.settings = settings
         self.engine = engine
         self._last_check = 0.0
-        self.root = settings.repo_path.parent / "shared-git"
+        # Git resolves clone and worktree destinations after applying -C.
+        self.root = (settings.repo_path.parent / "shared-git").resolve()
         with engine._tx() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS knowledge_documents(

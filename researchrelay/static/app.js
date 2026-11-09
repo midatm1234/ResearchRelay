@@ -454,7 +454,15 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) refr
 
 
 function projectCommit(project = state.project) { return project?.sync?.latest_commit || project?.latest_commit || null; }
-function readableProject(project) { if (managedProject && state.managedInfo?.name) return state.managedInfo.name; return project?.project_id === 'agentic-collaboration' ? 'Collaborative science with agentic AI' : cap((project?.project_id || '').replaceAll('-', ' ')); }
+function sharedProjectMetadata() {
+  const path = `${state.project?.repository?.knowledge_path}/PROJECT.md`;
+  return state.documents.find(doc => doc.path === path)?.metadata || {};
+}
+function readableProject(project) {
+  if (managedProject && state.managedInfo?.name) return state.managedInfo.name;
+  const metadata = sharedProjectMetadata();
+  return metadata.project_name || metadata.title || (project?.project_id === 'agentic-collaboration' ? 'Collaborative science with agentic AI' : cap((project?.project_id || '').replaceAll('-', ' ')));
+}
 function newRequestId() { return globalThis.crypto?.randomUUID ? crypto.randomUUID() : `publication-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 function field(label, input) { return node('div', { class: 'shared-field' }, [node('label', { text: label }), input]); }
 function repositoryKey(project) {
@@ -494,7 +502,7 @@ function renderSharedProject(project) {
     const title = readableProject(project);
     $('project-title').textContent = title;
     $('project-label').textContent = title;
-    $('project-description').textContent = state.managedInfo?.description || 'Shared evidence, attributed agent handoffs, and scientific decisions across participant environments.';
+    $('project-description').textContent = state.managedInfo?.description || sharedProjectMetadata().description || 'Shared evidence, attributed agent handoffs, and scientific decisions across participant environments.';
     $('workspace-name').textContent = cap(project.project_id.replaceAll('-', ' '));
     $('workspace-caption').textContent = repository.branch;
     $('pilot-button').hidden = true;
@@ -536,11 +544,20 @@ function loadSharedContext({fresh = false} = {}) {
     if (state.knowledgeRequest === request) { state.knowledgeRequest = null; state.knowledgeBusy = false; }
   });
 }
+function sharedKnowledgeDocuments() {
+  const prefix = `${state.project?.repository?.knowledge_path || ''}/`;
+  return state.documents.filter(doc => {
+    const meta = doc.metadata || {};
+    const path = doc.path.startsWith(prefix) ? doc.path.slice(prefix.length) : doc.path;
+    return !meta.reserved && !['task', 'literature_index', 'log', 'project_document'].includes(meta.artifact_type)
+      && !/^(?:_workflow|pilot)\//.test(path);
+  });
+}
 function renderSharedKnowledge() {
   renderSourceCoverage();
   if (!state.project?.repository) { clear($('knowledge-list')); return; }
-  if (!state.documents.length) { clear($('knowledge-list'), [node('p', { class: 'knowledge-empty', text: 'No Markdown knowledge artifacts were retrieved from the configured project directory.' })]); return; }
-  const documents = [...state.documents].sort((a, b) => a.path.localeCompare(b.path));
+  const documents = sharedKnowledgeDocuments().sort((a, b) => a.path.localeCompare(b.path));
+  if (!documents.length) { clear($('knowledge-list'), [node('p', { class: 'knowledge-empty', text: 'No knowledge contributions yet.' })]); return; }
   clear($('knowledge-list'), documents.map(doc => {
     const meta = doc.metadata || {};
     return node('article', { class: 'knowledge-row' }, [node('div', { class: 'knowledge-row-main' }, [node('button', { class: 'knowledge-title', text: meta.title || meta.objective || meta.id || doc.path, onclick: () => showKnowledge(doc) }), node('small', { text: `${doc.path} · ${meta.artifact_type || 'Markdown'} · ${meta.responsible_participant || 'unattributed'} / ${meta.producing_agent || 'unknown agent'}${meta.version ? ` · v${meta.version}` : ''}` })]), node('button', { class: 'text-button', text: 'Read ↗', 'aria-label': `Read ${doc.path}`, onclick: () => showKnowledge(doc) })]);
@@ -715,12 +732,13 @@ function renderSourceCoverage() {
     }
   }
   let sources = review?.source_notes || [];
-  if (!sources.length) sources = state.documents.filter(doc => doc.metadata?.artifact_type === 'source_note' && doc.metadata?.bibliography).map(doc => ({
+  if (!sources.length) sources = sharedKnowledgeDocuments().filter(doc => doc.metadata?.artifact_type === 'source_note' && doc.metadata?.bibliography).map(doc => ({
     id: doc.metadata.id, title: doc.metadata.bibliography.title || doc.metadata.title,
     publication_status: doc.metadata.bibliography.kind, url: doc.metadata.bibliography.url,
     access: doc.metadata.bibliography.access || doc.metadata.provenance?.source_access,
     source_path: doc.path, sha256: doc.sha256, search_date: doc.metadata.provenance?.search_date,
   }));
+  $('literature-coverage').hidden = !sources.length;
   if (!sources.length) {
     $('source-count').textContent = 'Not loaded';
     $('source-coverage-summary').textContent = shared ? 'Retrieve committed source notes with bibliography metadata to inspect publication status and access limits. Cached offline pilot evidence is kept separate.' : 'Run the offline literature pilot to inspect source-note publication status and access limits.';

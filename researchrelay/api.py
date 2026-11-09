@@ -194,6 +194,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None, *
         response = await call_next(request)
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Referrer-Policy'] = 'same-origin'
+        response.headers['Cache-Control'] = 'no-store'
         return response
 
     @app.exception_handler(SyncError)

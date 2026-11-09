@@ -98,6 +98,56 @@ def test_two_users_publish_review_and_reject_stale_updates(app):
     history = alice.post("/api/hub/projects/"+project["id"]+"/refresh").json()
     assert len(history["commits"])>=4
 
+
+def test_new_computer_discovers_shared_project_without_creating_remote_resources(app,tmp_path):
+    alice = login(app)
+    project = create(alice)["project"]
+    shared = app.state.project_hub
+    remote = shared.client_factory(DemoIdentity(1,"alice"))
+    before = remote.get_head("alice","literature","main")
+    second_app = create_app(Settings(db_path=tmp_path/"second-default.db",repo_path=tmp_path/"second-record",
+        project_demo=True,hub_path=tmp_path/"second-hub",mode="demo",github_url=None))
+    second_app.state.project_hub.client_factory = lambda who: LocalGitHubClient(shared.root/"demo-remotes",who)
+    second = login(second_app)
+    assert second.get("/api/hub/status").json()["projects"]==[]
+
+    discovered = second.post("/api/hub/projects/discover",json={})
+    assert discovered.status_code==200,discovered.text
+    result = discovered.json()
+    assert result["errors"]==[] and result["next_page"] is None
+    assert result["scanned"]==1
+    assert result["projects"][0]["id"]==project["id"]
+    assert result["projects"][0]["name"]==project["name"]
+    assert second.get(project["url"]+"/api/project/context").status_code==200
+    assert second.get(project["url"]+"/api/tasks").json()==[]
+    assert remote.get_head("alice","literature","main")==before
+
+    # Discovery is idempotent and works for another authorized account too.
+    repeated = second.post("/api/hub/projects/discover",json={}).json()
+    assert len(repeated["projects"])==1 and repeated["projects"][0]["id"]==project["id"]
+    bob = login(second_app,"bob")
+    assert bob.get("/api/hub/projects").json()["projects"]==[]
+    assert bob.post("/api/hub/projects/discover",json={}).json()["projects"][0]["id"]==project["id"]
+    alice.patch("/api/hub/projects/"+project["id"],json={"name":"Shared revised project"}).raise_for_status()
+    updated = second.post("/api/hub/projects/"+project["id"]+"/refresh").json()
+    assert updated["project"]["name"]=="Shared revised project"
+
+
+def test_discovery_can_target_an_existing_project_branch(app):
+    alice = login(app)
+    main = create(alice)["project"]
+    branch = create(alice,request_id="branch-project",name="Branch project",mode="new_branch",
+                    repository=main["repository"],branch="team-review",base_branch="main")["project"]
+    bob = login(app,"bob")
+    found = bob.post("/api/hub/projects/discover",json={"repository":main["repository"],"branch":"team-review"})
+    assert found.status_code==200,found.text
+    assert {p["id"] for p in found.json()["projects"]} >= {branch["id"]}
+    assert all(p["branch"]=="team-review" for p in found.json()["projects"])
+    assert bob.post("/api/hub/projects/discover",json={"branch":"team-review"}).status_code==422
+    assert bob.post("/api/hub/projects/discover",json={"page":0}).status_code==422
+    assert TestClient(app).post("/api/hub/projects/discover",json={}).status_code==401
+    assert bob.post("/api/hub/projects/discover",json={},headers={"Origin":"https://untrusted.example"}).status_code==403
+
 def test_permission_auth_and_cross_origin_failures(app):
     anonymous = TestClient(app)
     assert anonymous.post("/api/hub/projects",json={}).status_code in {401,422}
@@ -105,6 +155,9 @@ def test_permission_auth_and_cross_origin_failures(app):
     alice = login(app)
     project = create(alice)["project"]
     reader = login(app,"reader")
+    discovered = reader.post("/api/hub/projects/discover",json={}).json()
+    assert discovered["projects"][0]["id"]==project["id"]
+    assert discovered["projects"][0]["role"]=="read"
     assert reader.get(project["url"]+"/api/project/context").status_code==200
     assert reader.post(project["url"]+"/api/tasks",json=dict(title="No",owner="reader",acceptance_criteria=["No"])).status_code==403
     assert reader.post("/api/hub/projects",json=dict(request_id="forbidden",name="No",mode="new_repository",repository="reader/no")).status_code==403

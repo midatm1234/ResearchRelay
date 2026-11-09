@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const hub = {status:null,projects:[],repositories:[],repositoryLoaded:false,repositoryPage:0,edit:null,requestId:null,signature:null,busy:false,branchRequest:0};
+const hub = {status:null,projects:[],repositories:[],repositoryLoaded:false,repositoryPage:0,edit:null,requestId:null,signature:null,busy:false,branchRequest:0,discoveryVersion:0};
 const operationKey='researchrelay:hub:last-operation';
 function el(tag,attrs={},children=[]) {
   const item=document.createElement(tag);
@@ -58,18 +58,42 @@ function accountMessage() {
     if (status.configured) message.append(el('a',{href:status.github_auth_url||'/api/hub/auth/login',class:'button primary',text:'Connect GitHub →'}));
   }
 }
-async function refreshHub() {
-  const status=await api('/status');hub.status=status;
+async function refreshHub({discover=false}={}) {
+  const version=++hub.discoveryVersion;
+  const status=await api('/status');
+  if(version!==hub.discoveryVersion)return status;
+  hub.status=status;$('project-discovery').hidden=true;
   hub.projects=status.projects||[];accountMessage();renderProjects();
   if (sessionStorage.getItem(operationKey)) {$('operation-banner').hidden=false;$('operation-note').textContent=`Setup request ${sessionStorage.getItem(operationKey)}. Check its outcome before repeating creation.`;}
+  if(discover&&status.identity)await discoverProjects(version);
   return status;
+}
+async function discoverProjects(version) {
+  const message=$('project-discovery');let page=1,scanned=0;const errors=[];
+  message.hidden=false;message.textContent='Checking GitHub for shared projects…';
+  try {
+    while(page) {
+      const result=await api('/projects/discover','POST',{page});
+      if(version!==hub.discoveryVersion)return;
+      hub.projects=result.projects||[];renderProjects();scanned+=result.scanned||0;
+      errors.push(...(result.errors||[]));page=result.next_page;
+      message.textContent=`Checking GitHub for shared projects… ${scanned} repositories checked.`;
+    }
+    const children=[el('p',{text:`Checked ${scanned} repositories for shared projects. Projects on other branches can be joined through Existing branch.`})];
+    if(errors.length)children.push(el('details',{},[
+      el('summary',{text:`${errors.length} locations could not be checked`}),
+      ...errors.slice(0,10).map(error=>el('p',{text:[error.repository,error.branch,error.knowledge_path,error.detail,error.next_action].filter(Boolean).join(' · ')})),
+      errors.length>10?el('p',{text:'Additional locations could not be checked. Retry with Refresh list, or join a specific project folder.'}):null
+    ]));
+    replace(message,children);
+  } catch(error) {if(version===hub.discoveryVersion)showError(message,error);}
 }
 function renderProjects() {
   const query=$('project-search').value.trim().toLowerCase();
   const projects=hub.projects.filter(project=>[project.name,project.description,project.repository,project.branch].some(value=>String(value||'').toLowerCase().includes(query)));
   $('project-count').textContent=hub.projects.length;
   if (!projects.length) {
-    replace($('project-list'),[el('div',{class:'hub-empty'},[el('strong',{text:query?'No matching projects':hub.status?.identity?'Your next collaboration starts here.':'A shared record starts with a connection.'}),el('p',{text:query?'Try another project or repository name.':hub.status?.identity?'Create a project or join an existing project folder on a repository you can access.':'Connect GitHub to create or discover projects. The default workspace remains available separately.'})])]);return;
+    replace($('project-list'),[el('div',{class:'hub-empty'},[el('strong',{text:query?'No matching projects':hub.status?.identity?'Your next collaboration starts here.':'A shared record starts with a connection.'}),el('p',{text:query?'Try another project or repository name.':hub.status?.identity?'Refresh list searches GitHub for shared projects. You can also create a project or join an existing project folder on another branch.':'Connect GitHub to create or discover projects. The default workspace remains available separately.'})])]);return;
   }
   replace($('project-list'),projects.map(project=>{
     const problem=el('p',{class:'hub-card-error',role:'status',hidden:'hidden'});
@@ -204,7 +228,7 @@ $('new-project').addEventListener('click',()=>{$('submit-project').hidden=false;
 $('cancel-project-form').addEventListener('click',()=>{$('project-dialog').close();});$('close-project-dialog').addEventListener('click',()=>{$('project-dialog').close();});
 $('close-hub-detail').addEventListener('click',()=>{$('hub-detail-dialog').close();});
 $('hub-logout').addEventListener('click',event=>busy(event.currentTarget,async()=>{await api('/auth/logout','POST',{});hub.repositories=[];hub.repositoryLoaded=false;sessionStorage.removeItem(operationKey);$('operation-banner').hidden=true;await refreshHub();toast('Signed out.');}));
-$('hub-refresh').addEventListener('click',event=>busy(event.currentTarget,refreshHub));$('project-search').addEventListener('input',renderProjects);
+$('hub-refresh').addEventListener('click',event=>busy(event.currentTarget,()=>refreshHub({discover:true})));$('project-search').addEventListener('input',renderProjects);
 $('recover-operation').addEventListener('click',event=>busy(event.currentTarget,recoverOperation));
-document.querySelectorAll('[data-demo-login]').forEach(button=>button.addEventListener('click',()=>busy(button,async()=>{await api('/auth/demo','POST',{login:button.dataset.demoLogin});hub.repositoryLoaded=false;await refreshHub();toast(`Local demonstration account: ${button.dataset.demoLogin}.`);} )));
-refreshHub().then(()=>{const query=new URLSearchParams(location.search);if(query.get('auth_error'))showError($('hub-error'),new Error(query.get('auth_error')));if(query.get('new')==='1')$('new-project').click();}).catch(error=>showError($('hub-error'),error));
+document.querySelectorAll('[data-demo-login]').forEach(button=>button.addEventListener('click',()=>busy(button,async()=>{await api('/auth/demo','POST',{login:button.dataset.demoLogin});hub.repositoryLoaded=false;await refreshHub({discover:true});toast(`Local demonstration account: ${button.dataset.demoLogin}.`);} )));
+refreshHub({discover:true}).then(()=>{const query=new URLSearchParams(location.search);if(query.get('auth_error'))showError($('hub-error'),new Error(query.get('auth_error')));if(query.get('new')==='1')$('new-project').click();}).catch(error=>showError($('hub-error'),error));

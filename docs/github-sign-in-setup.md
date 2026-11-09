@@ -1,6 +1,6 @@
 # Set up GitHub sign-in locally
 
-GitHub browser sign-in connects the Projects page to a participant's GitHub identity. A project created through an authenticated CLI request can already exist in the catalog while the signed-out browser shows an empty project list. Sign in with the same GitHub account to see its registered projects.
+GitHub browser sign-in connects the Projects page to a participant's GitHub identity. Sign in to see registered projects and discover shared `PROJECT.md` records from accessible GitHub repositories. A signed-out browser shows an empty project list.
 
 ## 1. Register an OAuth App
 
@@ -51,7 +51,11 @@ The response should contain `"configured": true`. Before browser sign-in, `"iden
 
 ## 4. Sign in and find your project
 
-Open [Projects](http://127.0.0.1:8000/projects), select **Connect GitHub**, and authorize ResearchRelay using the account that created or joined the project. After GitHub redirects back, the Projects page shows that account's registered projects, subject to its current repository permissions.
+Open [Projects](http://127.0.0.1:8000/projects), select **Connect GitHub**, and authorize ResearchRelay using an account with access to the project repository. After GitHub redirects back, the Projects page retrieves registered projects and searches the default branches of accessible repositories for ResearchRelay `PROJECT.md` files. It follows repository pagination and registers discovered projects locally without writing to GitHub. **Refresh list** repeats this search. Scan failures are displayed beside the list; already retrieved projects remain available.
+
+For a project on a different branch, choose **New Project → Existing branch**, select its repository and branch, uncheck **Initialize a new project record**, and enter the existing folder containing `PROJECT.md`.
+
+Each computer's `127.0.0.1` addresses its own local service. Separate local services can discover and exchange committed project records through GitHub. Their live task queues and execution databases remain independent; use one coordinator service when sharing task claims and execution state.
 
 Browser access uses GitHub sign-in. Workers and CLI commands reuse the participant’s own `gh auth login` authorization; set `RESEARCHRELAY_SERVER` to the managed project URL. SSH access for the worker’s clone is configured separately. Each collaborator signs in with their own GitHub account and joins the existing project folder after receiving repository access.
 
@@ -62,7 +66,7 @@ Browser access uses GitHub sign-in. Workers and CLI commands reuse the participa
 | GitHub sign-in is not configured | Fill both credential fields, save `.env`, and fully restart the service. |
 | Callback or redirect URL mismatch | Match `RESEARCHRELAY_PUBLIC_URL` and the registered callback exactly, including scheme, host, port, and `/api/hub/auth/callback`. |
 | Sign-in fails or its state expires | Start again through **Connect GitHub** in the same browser. |
-| Project list remains empty | Check the signed-in account, its project membership and repository access, and the existing `RESEARCHRELAY_HUB_PATH`. |
+| Project list remains empty | Select **Refresh list**, check discovery errors and GitHub repository access, and explicitly join projects on other branches. Preserve the existing `RESEARCHRELAY_HUB_PATH` for local execution state. |
 | Repository access is rejected | Check GitHub repository permissions and any organization OAuth/SSO restrictions. |
 
 See [GitHub authentication and repository permissions](github-auth.md) for requested scopes, credential storage, session behavior, worker authentication, and HTTPS deployment requirements.

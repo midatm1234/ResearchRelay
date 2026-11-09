@@ -10,6 +10,7 @@ import pytest
 
 from researchrelay.config import Settings
 from researchrelay.github_client import GitHubError
+from researchrelay.knowledge import render_knowledge
 from researchrelay.project_hub import HubError, ProjectHub
 
 
@@ -247,3 +248,89 @@ def test_remote_success_then_local_registration_failure_recovers_without_reprovi
     assert calls==["create-one"]
     with recreated.tx() as db:
         assert db.execute("SELECT count(*) FROM projects").fetchone()[0]==1
+
+
+class DiscoveryClient(CatalogClient):
+    def __init__(self,names):
+        super().__init__()
+        self.repositories = [self.get_repository(*name.split("/")) for name in names]
+        self.files = {}
+        self.truncated = set()
+        self.tree_errors = {}
+
+    def list_repositories(self,page=1,per_page=100):
+        return self.repositories[(page-1)*per_page:page*per_page]
+
+    def get_head(self,owner,repo,branch):
+        self.get_repository(owner,repo)
+        return "a"*40
+
+    def read_tree(self,owner,repo,ref):
+        name = owner+"/"+repo
+        if name in self.tree_errors:
+            raise self.tree_errors[name]
+        return dict(truncated=name in self.truncated,tree=[dict(path=path,type="blob",mode="100644")
+            for repository,path in self.files if repository==name])
+
+    def read_file(self,owner,repo,path,ref):
+        return self.files.get((owner+"/"+repo,path))
+
+
+def shared_record(title="Shared project",project_id="shared-project"):
+    return render_knowledge(dict(id="project-record",project_id=project_id,artifact_type="project_document",
+        title=title,responsible_participant="alice",producing_agent="researchrelay/project-init"),"# Project\n").encode()
+
+
+def test_discovery_pages_through_repositories_and_recovers_project_metadata(catalog):
+    hub,_ = catalog
+    names = ["alice/empty-"+str(i) for i in range(20)]+["alice/shared"]
+    client = DiscoveryClient(names)
+    client.files[("alice/shared","projects/research/PROJECT.md")] = shared_record()
+    hub.client_factory = lambda who:client
+    first = hub.discover(BOB)
+    assert first["scanned"]==20 and first["next_page"]==2 and first["projects"]==[]
+    second = hub.discover(BOB,page=first["next_page"])
+    assert second["scanned"]==1 and second["next_page"] is None and second["errors"]==[]
+    assert second["projects"][0]["name"]=="Shared project"
+    assert second["projects"][0]["knowledge_path"]=="projects/research"
+    assert second["projects"][0]["created_by"]=="alice"
+    assert second["projects"][0]["commit"]=="a"*40
+
+
+def test_discovery_reports_invalid_records_without_echoing_contents_and_continues(catalog):
+    hub,_ = catalog
+    client = DiscoveryClient(["alice/shared","alice/huge"])
+    client.files[("alice/shared","projects/broken/PROJECT.md")] = b"---\nid: private-unpublished-hypothesis\n---\nInvalid project"
+    client.files[("alice/shared","projects/valid/PROJECT.md")] = shared_record()
+    client.truncated.add("alice/huge")
+    hub.client_factory = lambda who:client
+    found = hub.discover(BOB)
+    assert len(found["projects"])==1 and found["projects"][0]["name"]=="Shared project"
+    assert len(found["errors"])==2
+    assert "private-unpublished-hypothesis" not in json.dumps(found)
+    assert "not a valid ResearchRelay" in found["errors"][0]["detail"]
+    assert "completely" in found["errors"][1]["detail"]
+
+
+@pytest.mark.parametrize("status",[403,404])
+def test_discovery_never_registers_or_reveals_projects_without_repository_access(catalog,status):
+    hub,_ = catalog
+    client = DiscoveryClient(["alice/shared"])
+    client.files[("alice/shared","projects/research/PROJECT.md")] = shared_record(title="Sensitive title")
+    client.denied["alice/shared"] = status
+    hub.client_factory = lambda who:client
+    found = hub.discover(BOB)
+    assert found["projects"]==[] and "Sensitive title" not in json.dumps(found)
+    with hub.tx() as db:
+        assert db.execute("SELECT count(*) FROM projects").fetchone()[0]==0
+
+
+@pytest.mark.parametrize(("status","kind"),[(429,"rate_limit"),(503,"unavailable"),(401,"authentication")])
+def test_discovery_stops_on_service_failures_instead_of_treating_them_as_empty_results(catalog,status,kind):
+    hub,_ = catalog
+    client = DiscoveryClient(["alice/shared"])
+    client.tree_errors["alice/shared"] = GitHubError("GitHub is unavailable.",status,kind=kind)
+    hub.client_factory = lambda who:client
+    with pytest.raises(GitHubError) as caught:
+        hub.discover(BOB)
+    assert caught.value.status==status

@@ -103,6 +103,10 @@ class ProjectHub:
 
     def permission(self,identity,project):
         repository = self.client_factory(identity).get_repository(*project["repository"].split("/"))
+        return self.repository_role(repository)
+
+    @staticmethod
+    def repository_role(repository):
         perms = repository.get("permissions") or {}
         if not (perms.get("pull") or perms.get("push") or perms.get("admin") or not repository.get("private",True)):
             raise HubError("Your GitHub account does not have access to this repository.",403)
@@ -132,6 +136,59 @@ class ProjectHub:
                 raise
             result.append(self.public(project,role))
         return result
+
+    def discover(self,identity,*,repository=None,branch=None,page=1):
+        """Recover the local catalog from shared PROJECT.md files without remote writes."""
+        from .github_client import GitHubError
+        if branch and not repository:
+            raise HubError("Select a repository when searching a specific branch.",422)
+        client = self.client_factory(identity)
+        page_size = 20
+        if repository:
+            repositories = [client.get_repository(*repository.split("/"))]
+        else:
+            repositories = client.list_repositories(page=page,per_page=page_size)
+        errors = []
+        for repo in repositories:
+            name = repo["full_name"]
+            selected_branch = branch or repo.get("default_branch")
+            if not selected_branch:
+                continue
+            try:
+                self.repository_role(repo)
+                owner,repo_name = name.split("/")
+                head = client.get_head(owner,repo_name,selected_branch)
+                tree = client.read_tree(owner,repo_name,head)
+                if tree.get("truncated"):
+                    raise HubError("The repository tree could not be searched completely.",413,
+                                   next_action="Join the project's existing knowledge folder directly.")
+                paths = sorted({entry["path"] for entry in tree["tree"]
+                                if entry.get("type")=="blob" and entry.get("mode") in {"100644","100755"}
+                                and entry.get("path","").endswith("/PROJECT.md")})
+                if len(paths)>100:
+                    raise HubError("This repository contains too many project records for automatic discovery.",413,
+                                   next_action="Join the project's existing knowledge folder directly.")
+            except (GitHubError,HubError) as error:
+                if getattr(error,"kind",None) in {"authentication","rate_limit","unavailable"} or error.status==401:
+                    raise
+                errors.append(dict(repository=name,branch=selected_branch,detail=str(error),next_action=error.next_action))
+                continue
+            for path in paths:
+                prefix = path.rsplit("/",1)[0]
+                try:
+                    self.join(identity,dict(repository=name,branch=selected_branch,knowledge_path=prefix))
+                except (GitHubError,HubError) as error:
+                    if getattr(error,"kind",None) in {"authentication","rate_limit","unavailable"} or error.status==401:
+                        raise
+                    errors.append(dict(repository=name,branch=selected_branch,knowledge_path=prefix,
+                                       detail=str(error),next_action=error.next_action))
+                except (ValueError,UnicodeError):
+                    # Validation errors may contain untrusted file content; do not echo it.
+                    errors.append(dict(repository=name,branch=selected_branch,knowledge_path=prefix,
+                        detail="PROJECT.md is not a valid ResearchRelay project record.",
+                        next_action="Check this file's ResearchRelay metadata, then refresh the project list."))
+        return dict(projects=self.list_projects(identity),errors=errors,scanned=len(repositories),
+                    next_page=page+1 if not repository and len(repositories)==page_size and page<1000 else None)
 
     def register(self, identity, data):
         binding = self.binding(data["repository"],data["branch"],data["knowledge_path"])

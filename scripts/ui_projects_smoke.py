@@ -115,6 +115,7 @@ def exercise(page,url,fixture=None):
     expect(page.locator('#hub-identity')).to_have_text('Choose a demo account')
     page.get_by_role('button',name='Continue as Bob').click()
     expect(page.locator('#hub-identity')).to_have_text('@bob')
+    expect(page.locator(f'[data-project-id="{first["id"]}"]')).to_contain_text('Cohort A revised',timeout=30_000)
     page.get_by_role('button',name='＋ New Project',exact=True).click()
     page.locator('input[name=mode][value=connect]').check()
     page.get_by_label('Accessible GitHub repository').select_option(first['repository'])
@@ -131,9 +132,12 @@ def exercise(page,url,fixture=None):
     expect(page.locator('#connection-status')).to_have_text('All changes saved',timeout=60_000)
     expect(page.locator('#project-title')).to_have_text('Cohort A revised')
     expect(page.locator('#configure-project-button')).not_to_be_visible()
-    expect(page.locator('#knowledge-list')).to_contain_text('PROJECT.md')
-    page.get_by_role('button',name='Project account',exact=True).click()
-    expect(page.locator('#detail-content')).to_contain_text('server-managed GitHub sign-in')
+    # Project documents populate the overview and are excluded from knowledge contributions.
+    context = page.evaluate("async path => {const response=await fetch(path,{credentials:'same-origin'});if(!response.ok)throw new Error('Shared context failed');return response.json();}",
+                            f'/projects/{first["id"]}/api/project/context')
+    assert any(doc['path']==first['knowledge_path']+'/PROJECT.md' for doc in context['documents'])
+    page.get_by_role('button',name='My agent',exact=True).click()
+    expect(page.locator('#detail-content')).to_contain_text('Your provider credentials and clone Git authentication stay in your own environment.')
     expect(page.locator('#detail-content input[type=password]')).to_have_count(0)
     page.get_by_role('button',name='Close details').click()
     page.locator('#mark-seen-button').click()
@@ -146,6 +150,18 @@ def exercise(page,url,fixture=None):
     screenshot=Path(__file__).resolve().parents[1]/'.runtime/projects-hub.png';screenshot.parent.mkdir(exist_ok=True)
     page.screenshot(path=str(screenshot),full_page=True)
     if fixture is not None:
+        # A discovery request started before logout must not restore private cards.
+        fixture['hold_discovery']=True
+        page.get_by_role('button',name='Refresh list ↻').click()
+        expect(page.locator('#project-discovery')).to_contain_text('Checking GitHub')
+        page.get_by_role('button',name='Sign out',exact=True).click()
+        expect(page.locator('#hub-identity')).to_have_text('Choose a demo account')
+        assert len(fixture.get('pending_discovery',[]))==1
+        fixture['pending_discovery'].pop().fulfill(status=200,content_type='application/json',body=json.dumps(
+            {'projects':fixture['projects'],'errors':[],'scanned':1,'next_page':None}))
+        fixture['hold_discovery']=False
+        expect(page.locator('#hub-refresh')).to_be_enabled()
+        expect(page.locator('.hub-project-card')).to_have_count(0)
         fixture.update(configured=False,demo=False,login=None)
         page.get_by_role('button',name='Refresh list ↻').click()
         expect(page.locator('#hub-auth')).to_contain_text('GitHub sign-in is not configured')
@@ -154,7 +170,7 @@ def exercise(page,url,fixture=None):
     assert not errors,errors
     return dict(status='passed',mode='real HTTP/local Git demo' if fixture is None else 'mocked hub API/browser contracts',
         checks=['three creation modes','private default','setup recovery','metadata edits','repository activity',
-                'second user joins existing project','project-scoped dashboard','legacy bearer isolation','project-scoped catch-up','390px layout']+(['interrupted setup retries exact payload','resume uses saved input and excludes reconciliation','repository access error stays in form','unconfigured OAuth clears private project list'] if fixture is not None else []),
+                'second user discovers shared GitHub projects','second user joins existing project','project-scoped dashboard','legacy bearer isolation','project-scoped catch-up','390px layout']+(['interrupted setup retries exact payload','resume uses saved input and excludes reconciliation','repository access error stays in form','discovery follows pagination','late discovery response cannot restore private projects after logout','unconfigured OAuth clears private project list'] if fixture is not None else []),
         same_request_retry=fixture is not None,browser_errors=errors,github_transport_live=False,model_inference_live=False)
 
 
@@ -179,6 +195,14 @@ def mock_main():
             if fixture.get('fail_repositories'):status=403;result={'detail':'Repository access denied.','next_action':'Reconnect GitHub and verify repository permissions.'}
             else:result={'repositories':repos()}
         elif path.startswith('/api/hub/repositories/') and path.endswith('/branches'):result={'branches':[{'name':'main','commit':{'sha':'a'*40}}]}
+        elif path=='/api/hub/projects/discover':
+            if fixture.get('hold_discovery'):
+                fixture.setdefault('pending_discovery',[]).append(route);return
+            if payload['page']==1:
+                result={'projects':visible(),'errors':[],'scanned':20,'next_page':2}
+            else:
+                fixture['joined']=True
+                result={'projects':fixture['projects'],'errors':[],'scanned':len(repos()),'next_page':None}
         elif path=='/api/hub/projects/join':fixture['joined']=True;result={'project':fixture['projects'][0]}
         elif path=='/api/hub/projects' and method=='POST':
             fixture['creates'].append(payload)
@@ -201,7 +225,7 @@ def mock_main():
             project=next(p for p in fixture['projects'] if p['id']==path.split('/')[2]);binding={'url':'https://github.com/'+project['repository']+'.git','branch':project['branch'],'knowledge_path':project['knowledge_path']}
             info={'project_id':project['id'],'participant':'bob','repository':binding,'sync':{'status':'synced','latest_commit':'b'*40},'format_status':'provisional'}
             if path.endswith('/dashboard'):result={'project_id':project['id'],'project':info,'mode':'live','tasks':[],'artifacts':[],'decisions':[],'events':[],'jobs':[],'metrics':[],'latest_seq':2}
-            elif path.endswith('/project/context'):result={**info,'documents':[{'path':project['knowledge_path']+'/PROJECT.md','content':'# Shared project record','body':'# Shared project record','sha256':'d'*64,'commit':'b'*40,'metadata':{'id':project['id'],'title':project['name'],'artifact_type':'project','responsible_participant':'alice','producing_agent':'mock-fixture'}}]}
+            elif path.endswith('/project/context'):result={**info,'documents':[{'path':project['knowledge_path']+'/PROJECT.md','content':'# Shared project record','body':'# Shared project record','sha256':'d'*64,'commit':'b'*40,'metadata':{'id':project['id'],'title':project['name'],'artifact_type':'project_document','responsible_participant':'alice','producing_agent':'mock-fixture'}}]}
             else:result=info
         else:status=404;result={'detail':'Unexpected mocked route: '+path}
         route.fulfill(status=status,content_type='application/json',body=json.dumps(result))

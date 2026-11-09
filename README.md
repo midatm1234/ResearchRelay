@@ -27,6 +27,10 @@ To start, stop, restart, or check the local service, use `scripts/researchrelay.
 
 Run commands from the checkout. Team members use **Projects** and sign in with their own GitHub accounts. **My agent** stores each participant’s connection profile. The default workspace is a local operator view; authenticated team projects have isolated execution databases and repository bindings.
 
+On each computer, the Projects page searches the default branches of accessible GitHub repositories for shared `PROJECT.md` records and adds them to its local catalog. **Refresh list** repeats discovery, including additional repository pages. This reads GitHub without creating repositories, committing files, or starting tasks. For a project on another branch, use **Existing branch** and join its existing knowledge folder.
+
+Separate local installations can share project metadata and committed research files through GitHub; they do not need a shared HTTPS server for those records. Live task claims, attempts, approvals, and execution state currently belong to one coordinator database. Participants who need the same live task queue must connect to that coordinator; discovery does not merge or synchronize execution databases. `127.0.0.1:8000` reaches the current computer unless an explicit tunnel connects it elsewhere.
+
 ### Create or join a project
 
 For local browser sign-in, follow the [GitHub sign-in setup guide](docs/github-sign-in-setup.md), including callback/redirect URL configuration and project visibility troubleshooting.
@@ -58,7 +62,7 @@ Initialization commits portable `README.md`, `AGENTS.md`, `PROJECT.md`, `TASKS.m
 mamba run -n researchrelay python -c 'import subprocess,httpx; r=httpx.post("http://127.0.0.1:8000/api/hub/operations/REQUEST_ID/resume",headers={"Authorization":"Bearer "+subprocess.check_output(["gh","auth","token","--hostname","github.com"],text=True).strip()},timeout=120,trust_env=False); r.raise_for_status(); print(r.json()["operation"]["status"])'
 ```
 
-Project cards **Open**, **Edit details**, **Refresh**, and show **Repository activity**. Metadata edits update the shared `PROJECT.md`. A second participant signs in, joins the same repository/branch/folder, and opens the same project. Its dashboard and task API live at `/projects/PROJECT_ID` and `/projects/PROJECT_ID/api`; each project has isolated workflow state, context pins, and browser catch-up state. Legacy default-workspace bearer tokens are never forwarded by the browser to these project routes. The default literature bundle stays in its original workspace; newly created projects start with an empty, explicitly proposed record.
+Project cards **Open**, **Edit details**, **Refresh**, and show **Repository activity**. Metadata edits update the shared `PROJECT.md`. A second participant signs in and discovers the shared project, or joins its repository/branch/folder explicitly. Its dashboard and task API live at `/projects/PROJECT_ID` and `/projects/PROJECT_ID/api`; each project has isolated workflow state, context pins, and browser catch-up state. Legacy default-workspace bearer tokens are never forwarded by the browser to these project routes. The default literature bundle stays in its original workspace; newly created projects start with an empty, explicitly proposed record.
 
 Each worker uses the participant’s existing GitHub CLI login and actual GitHub username. Sign in once and select the managed project before starting work:
 

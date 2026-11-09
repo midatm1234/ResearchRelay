@@ -36,6 +36,12 @@ class JoinProject(BaseModel):
     branch: str = Field(min_length=1,max_length=200)
     knowledge_path: str = Field(min_length=1,max_length=300)
 
+class DiscoverProjects(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    repository: str | None = Field(default=None,min_length=3,max_length=200,pattern=r"^[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$")
+    branch: str | None = Field(default=None,min_length=1,max_length=200)
+    page: int = Field(default=1,ge=1,le=1000)
+
 class ProjectEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None,min_length=1,max_length=160)
@@ -185,6 +191,10 @@ def install_hub(app,settings,hub=None):
         who = identity(request)
         project = hub.join(who,data.model_dump())
         return dict(project=hub.public(project,hub.permission(who,project)))
+
+    @app.post("/api/hub/projects/discover")
+    def discover_projects(data: DiscoverProjects,request: Request):
+        return hub.discover(identity(request),**data.model_dump())
 
     @app.get("/api/hub/operations/{request_id}")
     def operation(request_id: str,request: Request):

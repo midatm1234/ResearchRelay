@@ -23,6 +23,8 @@ git ls-remote git@github.com:midatm1234/ResearchRelay.git refs/heads/SRTD_DT_tes
 
 Local services automatically reload when the application's Python files change, including after a Git pull. Refresh the browser to load the latest HTML, JavaScript, CSS, and project state. Runtime databases and Git caches are outside the watched directory. Use `researchrelay serve --no-reload` for a stable process; non-loopback services disable automatic reload by default.
 
+To start, stop, restart, or check the local service, use `scripts/researchrelay.sh {start|stop|restart|status} [port]` on macOS/Linux or `.\scripts\researchrelay.ps1 {start|stop|restart|status} [-Port 8000]` in Windows PowerShell. Both default to port 8000 and the `researchrelay` mamba env (override with `RESEARCHRELAY_ENV`), and log to `.runtime/serve.log`.
+
 Run commands from the checkout. Team members use **Projects** and sign in with their own GitHub accounts. **My agent** stores each participant’s connection profile. The default workspace is a local operator view; authenticated team projects have isolated execution databases and repository bindings.
 
 ### Create or join a project

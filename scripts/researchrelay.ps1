@@ -9,7 +9,7 @@
 #>
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('start', 'stop', 'restart', 'status')]
+  [ValidateSet('start', 'stop', 'restart', 'status', 'run')]
   [string]$Action,
   [int]$Port = 8000
 )
@@ -35,7 +35,10 @@ function Stop-Service {
   if (-not $ids) { Write-Host "ResearchRelay is not running on port $Port."; return }
   # Stop twice: the auto-reload supervisor may respawn a worker after the first pass.
   foreach ($pass in 1..2) {
-    foreach ($id in @(Get-ServicePids)) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+    foreach ($id in @(Get-ServicePids)) {
+      try { Stop-Process -Id $id -Force -ErrorAction Stop }
+      catch { Write-Warning "Could not stop PID ${id}: $($_.Exception.Message)" }
+    }
     Start-Sleep -Milliseconds 700
   }
   if (@(Get-ServicePids)) { throw "Could not stop all processes on port $Port." }
@@ -64,7 +67,26 @@ function Start-Service {
   throw "Did not become ready; see $log and $log.err"
 }
 
+function Run-Foreground {
+  # Used by the VS Code task: kill any stale service, then serve in this terminal.
+  # Closing the terminal/window ends the service; the finally block cleans up stragglers.
+  Stop-Service
+  Set-Location $root
+  try {
+    if (Get-Command mamba -ErrorAction SilentlyContinue) {
+      & mamba run -n $envName researchrelay serve --port $Port
+    } elseif (Get-Command researchrelay -ErrorAction SilentlyContinue) {
+      & researchrelay serve --port $Port
+    } else {
+      throw 'Neither mamba nor researchrelay found on PATH.'
+    }
+  } finally {
+    Stop-Service
+  }
+}
+
 switch ($Action) {
+  'run'     { Run-Foreground }
   'start'   { Start-Service }
   'stop'    { Stop-Service }
   'restart' { Stop-Service; Start-Service }
